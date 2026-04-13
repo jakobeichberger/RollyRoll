@@ -1,131 +1,195 @@
-using System.Management;
-using System.Net;
 using System.Net.Http.Json;
 using System.Net.NetworkInformation;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace RollyRoll.ClientAgent;
 
 /// <summary>
-/// Sends periodic heartbeats to the RollyRoll server.
-/// Reports: MAC, hostname, IP, OS version, hardware model.
-/// Detects and reports IP/hostname changes automatically.
+/// Sends periodic heartbeat reports to the RollyRoll server every 60 seconds.
+/// Reports: MAC address, hostname, IP, OS version, hardware model, and online status.
+/// Detects IP/hostname changes and reports them immediately.
 /// </summary>
 public class HealthReporter : BackgroundService
 {
     private readonly ILogger<HealthReporter> _logger;
     private readonly ServerLocator _serverLocator;
-    private readonly TimeSpan _heartbeatInterval = TimeSpan.FromSeconds(60);
-    private string? _lastHostname;
-    private string? _lastIpAddress;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public HealthReporter(ILogger<HealthReporter> logger, ServerLocator serverLocator)
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(60);
+
+    private string _lastReportedHostname = string.Empty;
+    private string _lastReportedIp = string.Empty;
+
+    public HealthReporter(
+        ILogger<HealthReporter> logger,
+        ServerLocator serverLocator,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
         _serverLocator = serverLocator;
+        _httpClientFactory = httpClientFactory;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken ct)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("HealthReporter started, interval: {Interval}s", _heartbeatInterval.TotalSeconds);
+        _logger.LogInformation("HealthReporter started. Heartbeat interval: {Interval}s", HeartbeatInterval.TotalSeconds);
 
-        while (!ct.IsCancellationRequested)
+        // Small initial delay to let the server locator finish discovery
+        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
+        while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await SendHeartbeatAsync(ct);
+                await SendHeartbeatAsync(stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send heartbeat");
+                _logger.LogWarning(ex, "Failed to send heartbeat");
             }
 
-            await Task.Delay(_heartbeatInterval, ct);
+            try
+            {
+                await Task.Delay(HeartbeatInterval, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
+
+        _logger.LogInformation("HealthReporter stopped");
     }
 
     private async Task SendHeartbeatAsync(CancellationToken ct)
     {
-        var serverUrl = await _serverLocator.GetServerUrlAsync(ct);
-        var mac = GetPrimaryMacAddress();
+        var serverUrl = _serverLocator.GetCachedServerUrl();
+        if (string.IsNullOrEmpty(serverUrl))
+        {
+            // Try to rediscover the server
+            try
+            {
+                serverUrl = await _serverLocator.DiscoverAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Server discovery failed during heartbeat");
+                return;
+            }
+        }
+
+        var macAddress = GetPrimaryMacAddress();
         var hostname = Environment.MachineName;
         var ipAddress = GetPrimaryIpAddress();
-        var osVersion = Environment.OSVersion.VersionString;
+        var osVersion = Environment.OSVersion.ToString();
+        var hardwareModel = GetHardwareModel();
 
         // Detect changes
-        if (_lastHostname != null && (_lastHostname != hostname || _lastIpAddress != ipAddress))
+        var changed = hostname != _lastReportedHostname || ipAddress != _lastReportedIp;
+        if (changed)
         {
-            _logger.LogInformation("Network change detected: {OldHost}/{OldIp} -> {NewHost}/{NewIp}",
-                _lastHostname, _lastIpAddress, hostname, ipAddress);
+            _logger.LogInformation(
+                "Detected change: hostname={OldHost}->{NewHost}, IP={OldIp}->{NewIp}",
+                _lastReportedHostname, hostname, _lastReportedIp, ipAddress);
         }
-        _lastHostname = hostname;
-        _lastIpAddress = ipAddress;
 
         var heartbeat = new
         {
-            MacAddress = mac,
+            MacAddress = macAddress,
             Hostname = hostname,
             IpAddress = ipAddress,
             OsVersion = osVersion,
-            HardwareModel = GetHardwareModel(),
-            SerialNumber = GetSerialNumber()
+            HardwareModel = hardwareModel,
+            IsOnline = true
         };
 
-        using var http = new HttpClient(new HttpClientHandler
+        try
         {
-            ServerCertificateCustomValidationCallback = (_, _, _, _) => true
-        });
+            var client = _httpClientFactory.CreateClient("RollyRollServer");
+            if (client.BaseAddress == null)
+            {
+                client.BaseAddress = new Uri(serverUrl);
+            }
 
-        await http.PostAsJsonAsync($"{serverUrl}/api/client/heartbeat", heartbeat, ct);
-        _logger.LogDebug("Heartbeat sent: {Host} ({Mac})", hostname, mac);
+            var response = await client.PostAsJsonAsync("/api/agent/heartbeat", heartbeat, ct);
+            response.EnsureSuccessStatusCode();
+
+            _lastReportedHostname = hostname;
+            _lastReportedIp = ipAddress;
+
+            _logger.LogDebug("Heartbeat sent: MAC={Mac}, Host={Host}, IP={Ip}", macAddress, hostname, ipAddress);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send heartbeat to {Server}", serverUrl);
+        }
     }
 
     private static string GetPrimaryMacAddress()
     {
-        return NetworkInterface.GetAllNetworkInterfaces()
-            .Where(n => n.OperationalStatus == OperationalStatus.Up
-                && n.NetworkInterfaceType != NetworkInterfaceType.Loopback
-                && n.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
+        var nic = NetworkInterface.GetAllNetworkInterfaces()
+            .Where(n => n.OperationalStatus == OperationalStatus.Up)
+            .Where(n => n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
             .OrderByDescending(n => n.Speed)
-            .Select(n => BitConverter.ToString(n.GetPhysicalAddress().GetAddressBytes()).Replace("-", ":"))
-            .FirstOrDefault() ?? "00:00:00:00:00:00";
+            .FirstOrDefault();
+
+        if (nic == null)
+            return "00:00:00:00:00:00";
+
+        var macBytes = nic.GetPhysicalAddress().GetAddressBytes();
+        return string.Join(":", macBytes.Select(b => b.ToString("X2")));
     }
 
     private static string GetPrimaryIpAddress()
     {
         try
         {
-            using var socket = new System.Net.Sockets.Socket(
-                System.Net.Sockets.AddressFamily.InterNetwork,
-                System.Net.Sockets.SocketType.Dgram, 0);
-            socket.Connect("8.8.8.8", 65530);
-            return ((IPEndPoint)socket.LocalEndPoint!).Address.ToString();
+            var host = System.Net.Dns.GetHostEntry(System.Net.Dns.GetHostName());
+            var ip = host.AddressList
+                .FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
+            return ip?.ToString() ?? "0.0.0.0";
         }
-        catch { return "127.0.0.1"; }
+        catch
+        {
+            return "0.0.0.0";
+        }
     }
 
     private static string GetHardwareModel()
     {
         try
         {
-            using var searcher = new ManagementObjectSearcher("SELECT Manufacturer, Model FROM Win32_ComputerSystem");
-            foreach (var obj in searcher.Get())
-                return $"{obj["Manufacturer"]} {obj["Model"]}";
-        }
-        catch { }
-        return "Unknown";
-    }
+            // Read from WMI via process call (works without WMI .NET dependency)
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "wmic",
+                Arguments = "computersystem get manufacturer,model /format:list",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
 
-    private static string GetSerialNumber()
-    {
-        try
-        {
-            using var searcher = new ManagementObjectSearcher("SELECT SerialNumber FROM Win32_BIOS");
-            foreach (var obj in searcher.Get())
-                return obj["SerialNumber"]?.ToString() ?? "";
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null) return "Unknown";
+
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit();
+
+            var manufacturer = string.Empty;
+            var model = string.Empty;
+
+            foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (line.StartsWith("Manufacturer=", StringComparison.OrdinalIgnoreCase))
+                    manufacturer = line.Split('=', 2)[1].Trim();
+                else if (line.StartsWith("Model=", StringComparison.OrdinalIgnoreCase))
+                    model = line.Split('=', 2)[1].Trim();
+            }
+
+            return $"{manufacturer} {model}".Trim();
         }
-        catch { }
-        return "";
+        catch
+        {
+            return "Unknown";
+        }
     }
 }

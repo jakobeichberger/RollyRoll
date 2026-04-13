@@ -1,143 +1,242 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Text.Json;
-using Microsoft.Extensions.Logging;
 
 namespace RollyRoll.ClientAgent;
 
 /// <summary>
-/// Auto-discovers the RollyRoll server without manual configuration.
-/// Discovery order: UDP broadcast (port 5150) -> DNS SRV (_rollyroll._tcp) -> last-known IP from config.
-/// Caches the result and re-discovers if the server becomes unreachable.
+/// Auto-discovers the RollyRoll server using multiple strategies.
+/// Discovery order:
+///   1. UDP broadcast on port 5150 (same subnet)
+///   2. DNS SRV lookup for _rollyroll._tcp (cross-subnet)
+///   3. Last known server address from local config file (fallback)
+/// Caches the result to avoid repeated discovery on every request.
 /// </summary>
 public class ServerLocator
 {
     private readonly ILogger<ServerLocator> _logger;
+    private readonly IConfiguration _configuration;
     private string? _cachedServerUrl;
-    private readonly string _configPath;
+    private DateTime _lastDiscovery = DateTime.MinValue;
+
+    private static readonly TimeSpan CacheExpiry = TimeSpan.FromMinutes(30);
+    private static readonly string LastKnownServerPath = Path.Combine(AppContext.BaseDirectory, "last_server.txt");
 
     private const int DiscoveryPort = 5150;
     private const int BroadcastTimeoutMs = 3000;
 
-    public ServerLocator(ILogger<ServerLocator> logger)
+    public ServerLocator(ILogger<ServerLocator> logger, IConfiguration configuration)
     {
         _logger = logger;
-        _configPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "RollyRoll", "server.json");
+        _configuration = configuration;
     }
 
-    /// <summary>Get the server base URL, discovering it if necessary.</summary>
-    public async Task<string> GetServerUrlAsync(CancellationToken ct = default)
-    {
-        if (_cachedServerUrl != null && await IsServerReachableAsync(_cachedServerUrl, ct))
-            return _cachedServerUrl;
+    /// <summary>
+    /// Get the cached server URL, or null if not yet discovered.
+    /// </summary>
+    public string? GetCachedServerUrl() => _cachedServerUrl;
 
-        // Step 1: UDP broadcast discovery
-        var broadcastResult = await DiscoverViaBroadcastAsync(ct);
+    /// <summary>
+    /// Discover the RollyRoll server. Uses cache if available and not expired.
+    /// </summary>
+    public async Task<string> DiscoverAsync(CancellationToken ct = default)
+    {
+        // Return cached result if still valid
+        if (_cachedServerUrl != null && DateTime.UtcNow - _lastDiscovery < CacheExpiry)
+        {
+            return _cachedServerUrl;
+        }
+
+        // Check configuration first (explicit override)
+        var configuredUrl = _configuration.GetValue<string>("ServerUrl");
+        if (!string.IsNullOrEmpty(configuredUrl))
+        {
+            _logger.LogInformation("Using configured server URL: {Url}", configuredUrl);
+            CacheResult(configuredUrl);
+            return configuredUrl;
+        }
+
+        // Strategy 1: UDP broadcast discovery
+        var broadcastResult = await TryBroadcastDiscoveryAsync(ct);
         if (broadcastResult != null)
         {
-            _cachedServerUrl = broadcastResult;
-            await SaveLastKnownAsync(broadcastResult);
-            _logger.LogInformation("Server found via broadcast: {Url}", broadcastResult);
+            _logger.LogInformation("Server discovered via UDP broadcast: {Url}", broadcastResult);
+            CacheResult(broadcastResult);
             return broadcastResult;
         }
 
-        // Step 2: DNS SRV lookup
-        var dnsResult = await DiscoverViaDnsSrvAsync(ct);
+        // Strategy 2: DNS SRV lookup
+        var dnsResult = await TryDnsSrvDiscoveryAsync(ct);
         if (dnsResult != null)
         {
-            _cachedServerUrl = dnsResult;
-            await SaveLastKnownAsync(dnsResult);
-            _logger.LogInformation("Server found via DNS SRV: {Url}", dnsResult);
+            _logger.LogInformation("Server discovered via DNS SRV: {Url}", dnsResult);
+            CacheResult(dnsResult);
             return dnsResult;
         }
 
-        // Step 3: Last known address
-        var lastKnown = await LoadLastKnownAsync();
-        if (lastKnown != null && await IsServerReachableAsync(lastKnown, ct))
+        // Strategy 3: Last known server address
+        var lastKnown = await TryLastKnownServerAsync(ct);
+        if (lastKnown != null)
         {
-            _cachedServerUrl = lastKnown;
-            _logger.LogInformation("Server found via last-known: {Url}", lastKnown);
+            _logger.LogInformation("Using last known server address: {Url}", lastKnown);
+            CacheResult(lastKnown);
             return lastKnown;
         }
 
-        throw new InvalidOperationException("Cannot discover RollyRoll server. Ensure server is running on the network.");
+        throw new InvalidOperationException(
+            "Unable to discover RollyRoll server. Tried: UDP broadcast, DNS SRV (_rollyroll._tcp), last known address. " +
+            "Configure 'ServerUrl' in appsettings.json or ensure the server is reachable.");
     }
 
-    private async Task<string?> DiscoverViaBroadcastAsync(CancellationToken ct)
+    /// <summary>
+    /// Try to discover the server via UDP broadcast on port 5150.
+    /// </summary>
+    private async Task<string?> TryBroadcastDiscoveryAsync(CancellationToken ct)
     {
         try
         {
-            using var client = new UdpClient();
-            client.EnableBroadcast = true;
-            client.Client.ReceiveTimeout = BroadcastTimeoutMs;
+            _logger.LogDebug("Attempting UDP broadcast discovery on port {Port}", DiscoveryPort);
 
-            var request = Encoding.UTF8.GetBytes("ROLLYROLL_DISCOVER");
-            await client.SendAsync(request, request.Length, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort));
+            using var udpClient = new UdpClient();
+            udpClient.EnableBroadcast = true;
+            udpClient.Client.ReceiveTimeout = BroadcastTimeoutMs;
 
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(BroadcastTimeoutMs);
+            var discoveryPayload = Encoding.UTF8.GetBytes("ROLLYROLL_DISCOVER");
+            await udpClient.SendAsync(discoveryPayload, discoveryPayload.Length,
+                new IPEndPoint(IPAddress.Broadcast, DiscoveryPort));
 
-            var result = await client.ReceiveAsync(cts.Token);
-            var response = Encoding.UTF8.GetString(result.Buffer);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(BroadcastTimeoutMs);
 
-            if (response.StartsWith("ROLLYROLL_SERVER:"))
+            try
             {
-                return response["ROLLYROLL_SERVER:".Length..];
+                var result = await udpClient.ReceiveAsync(timeoutCts.Token);
+                var serverUrl = Encoding.UTF8.GetString(result.Buffer);
+
+                if (Uri.TryCreate(serverUrl, UriKind.Absolute, out _))
+                {
+                    return serverUrl;
+                }
+
+                // Response might be just an IP — construct a URL
+                return $"https://{result.RemoteEndPoint.Address}:5001";
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("UDP broadcast timed out after {Timeout}ms", BroadcastTimeoutMs);
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or SocketException)
+        catch (Exception ex)
         {
-            _logger.LogDebug("Broadcast discovery: no response");
+            _logger.LogDebug(ex, "UDP broadcast discovery failed");
         }
+
         return null;
     }
 
-    private async Task<string?> DiscoverViaDnsSrvAsync(CancellationToken ct)
+    /// <summary>
+    /// Try to discover the server via DNS SRV record lookup for _rollyroll._tcp.
+    /// </summary>
+    private async Task<string?> TryDnsSrvDiscoveryAsync(CancellationToken ct)
     {
         try
         {
-            // Try to resolve _rollyroll._tcp DNS SRV record
-            var hostEntry = await Dns.GetHostEntryAsync("_rollyroll._tcp", ct);
-            if (hostEntry.AddressList.Length > 0)
+            _logger.LogDebug("Attempting DNS SRV lookup for _rollyroll._tcp");
+
+            // Use nslookup to query SRV records (cross-platform compatible approach)
+            var psi = new System.Diagnostics.ProcessStartInfo
             {
-                var ip = hostEntry.AddressList[0];
-                return $"https://{ip}:443";
+                FileName = "nslookup",
+                Arguments = "-type=SRV _rollyroll._tcp",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process == null) return null;
+
+            var output = await process.StandardOutput.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            // Parse the SRV record response for host and port
+            var lines = output.Split('\n');
+            foreach (var line in lines)
+            {
+                if (line.Contains("svr hostname", StringComparison.OrdinalIgnoreCase) ||
+                    line.Contains("target", StringComparison.OrdinalIgnoreCase))
+                {
+                    var parts = line.Split('=', StringSplitOptions.TrimEntries);
+                    if (parts.Length >= 2)
+                    {
+                        var host = parts[1].TrimEnd('.');
+                        return $"https://{host}:5001";
+                    }
+                }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            _logger.LogDebug("DNS SRV discovery: no record found");
+            _logger.LogDebug(ex, "DNS SRV discovery failed");
         }
+
         return null;
     }
 
-    private async Task<bool> IsServerReachableAsync(string url, CancellationToken ct)
+    /// <summary>
+    /// Try to use the last known server address saved from a previous successful discovery.
+    /// Validates that the server is still reachable before returning.
+    /// </summary>
+    private async Task<string?> TryLastKnownServerAsync(CancellationToken ct)
     {
         try
         {
-            using var http = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true });
-            http.Timeout = TimeSpan.FromSeconds(5);
-            var response = await http.GetAsync($"{url}/health", ct);
-            return response.IsSuccessStatusCode;
+            if (!File.Exists(LastKnownServerPath))
+                return null;
+
+            var serverUrl = (await File.ReadAllTextAsync(LastKnownServerPath, ct)).Trim();
+            if (string.IsNullOrEmpty(serverUrl))
+                return null;
+
+            _logger.LogDebug("Testing last known server: {Url}", serverUrl);
+
+            // Verify the server is reachable
+            using var httpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(5)
+            };
+
+            var response = await httpClient.GetAsync($"{serverUrl}/api/health", ct);
+            if (response.IsSuccessStatusCode)
+            {
+                return serverUrl;
+            }
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Last known server check failed");
+        }
+
+        return null;
     }
 
-    private async Task SaveLastKnownAsync(string url)
+    /// <summary>
+    /// Cache the discovered server URL and persist it to disk for future use.
+    /// </summary>
+    private void CacheResult(string serverUrl)
     {
-        var dir = Path.GetDirectoryName(_configPath)!;
-        Directory.CreateDirectory(dir);
-        await File.WriteAllTextAsync(_configPath, JsonSerializer.Serialize(new { ServerUrl = url }));
-    }
+        _cachedServerUrl = serverUrl;
+        _lastDiscovery = DateTime.UtcNow;
 
-    private async Task<string?> LoadLastKnownAsync()
-    {
-        if (!File.Exists(_configPath)) return null;
-        var json = await File.ReadAllTextAsync(_configPath);
-        var doc = JsonDocument.Parse(json);
-        return doc.RootElement.TryGetProperty("ServerUrl", out var prop) ? prop.GetString() : null;
+        // Persist to disk for fallback on next startup
+        try
+        {
+            File.WriteAllText(LastKnownServerPath, serverUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist server URL to {Path}", LastKnownServerPath);
+        }
     }
 }
