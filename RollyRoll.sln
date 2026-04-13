@@ -16,12 +16,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RollyRoll.WinPEAgent", "src
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RollyRoll.ClientAgent", "src\RollyRoll.ClientAgent\RollyRoll.ClientAgent.csproj", "{A1B2C3D4-1111-2222-3333-44445555BBBB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RollyRoll.Core.Tests", "tests\RollyRoll.Core.Tests\RollyRoll.Core.Tests.csproj", "{A1B2C3D4-1111-2222-3333-44445555CCCC}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RollyRoll.Infrastructure.Tests", "tests\RollyRoll.Infrastructure.Tests\RollyRoll.Infrastructure.Tests.csproj", "{A1B2C3D4-1111-2222-3333-44445555DDDD}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RollyRoll.Web.Tests", "tests\RollyRoll.Web.Tests\RollyRoll.Web.Tests.csproj", "{A1B2C3D4-1111-2222-3333-44445555EEEE}"
-EndProject
 
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -53,17 +47,5 @@ Global
 		{A1B2C3D4-1111-2222-3333-44445555BBBB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1B2C3D4-1111-2222-3333-44445555BBBB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1B2C3D4-1111-2222-3333-44445555BBBB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555CCCC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555CCCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555CCCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555CCCC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555DDDD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555DDDD}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555DDDD}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555DDDD}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555EEEE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555EEEE}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555EEEE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A1B2C3D4-1111-2222-3333-44445555EEEE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

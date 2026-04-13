@@ -13,21 +13,52 @@ builder.Services.AddDbContext<RollyRollDbContext>(options =>
         builder.Configuration.GetConnectionString("DefaultConnection")
             ?? "Data Source=rollyroll.db"));
 
+// ---------- Configuration values ----------
+var imageStorePath = builder.Configuration.GetValue<string>("RollyRoll:ImageStorePath")
+    ?? Path.Combine(AppContext.BaseDirectory, "Images");
+var serverBaseUrl = builder.Configuration.GetValue<string>("RollyRoll:ServerBaseUrl")
+    ?? "http://localhost:5000";
+var tftpServerIp = builder.Configuration.GetValue<string>("RollyRoll:TftpServerIp")
+    ?? "0.0.0.0";
+var masterKey = builder.Configuration.GetValue<string>("RollyRoll:MasterEncryptionKey")
+    ?? "RollyRoll-Default-Key-CHANGE-ME";
+
+Directory.CreateDirectory(imageStorePath);
+
 // ---------- Infrastructure services ----------
-// Services with existing implementations
+// Scoped services (depend on DbContext)
 builder.Services.AddScoped<IClientDiscoveryService, ClientDiscoveryService>();
 builder.Services.AddScoped<IDeploymentService, DeploymentEngine>();
-builder.Services.AddScoped<IImageService, DismImageService>();
-builder.Services.AddScoped<IRecoveryService, RecoveryService>();
+builder.Services.AddScoped<IImageService>(sp =>
+    new DismImageService(
+        sp.GetRequiredService<ILogger<DismImageService>>(),
+        sp.GetRequiredService<RollyRollDbContext>(),
+        imageStorePath));
 builder.Services.AddScoped<ISettingsService, SettingsService>();
-builder.Services.AddSingleton<IWakeOnLanService, WakeOnLanService>();
-builder.Services.AddSingleton<IAutoDiscoveryService, AutoDiscoveryService>();
 
-// Services pending implementation — register when concrete classes are added:
+// WakeOnLanService is scoped (depends on DbContext)
+builder.Services.AddScoped<IWakeOnLanService, WakeOnLanService>();
+
+// RecoveryService — register without IUserProfileService for now (made optional)
+builder.Services.AddScoped<IRecoveryService, RecoveryService>();
+
+// Singletons (no DbContext dependency)
+builder.Services.AddSingleton<IAutoDiscoveryService, AutoDiscoveryService>();
+builder.Services.AddSingleton(new EncryptionService(
+    LoggerFactory.Create(b => b.AddConsole()).CreateLogger<EncryptionService>(),
+    masterKey));
+
+// BootMenuGenerator uses IServiceScopeFactory internally (see refactored class)
+builder.Services.AddSingleton<BootMenuGenerator>(sp =>
+    new BootMenuGenerator(
+        sp.GetRequiredService<ILogger<BootMenuGenerator>>(),
+        sp.GetRequiredService<IServiceScopeFactory>(),
+        serverBaseUrl));
+
+// Services pending full implementation:
 // builder.Services.AddScoped<IPatchService, PatchService>();
 // builder.Services.AddScoped<ISchedulerService, SchedulerService>();
 // builder.Services.AddScoped<IAuditService, AuditService>();
-// builder.Services.AddSingleton<IPxeService, PxeService>();
 // builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 
 // ---------- Blazor Server & SignalR ----------
@@ -59,9 +90,9 @@ app.MapControllers();
 // ---------- WinPE Agent API ----------
 
 // GET /api/boot/script/{mac} — iPXE boot script for a given MAC
-app.MapGet("/api/boot/script/{mac}", async (string mac, IPxeService pxeService) =>
+app.MapGet("/api/boot/script/{mac}", async (string mac, BootMenuGenerator bootMenu, CancellationToken ct) =>
 {
-    var script = await pxeService.GenerateBootScriptAsync(mac, RollyRoll.Core.Models.BootType.Unknown);
+    var script = await bootMenu.GenerateScriptAsync(mac, ct);
     return Results.Content(script, "text/plain");
 });
 
@@ -86,6 +117,48 @@ app.MapPost("/api/task/{id:int}/complete", async (int id, TaskCompleteRequest re
     return Results.Ok();
 });
 
+// ---------- Client Agent API ----------
+
+// POST /api/agent/heartbeat — Receive heartbeat from ClientAgent
+app.MapPost("/api/agent/heartbeat", async (AgentHeartbeatRequest request, IClientDiscoveryService clientDiscovery) =>
+{
+    await clientDiscovery.RegisterFromAgentAsync(
+        request.MacAddress, request.Hostname, request.IpAddress,
+        request.OsVersion, request.HardwareModel);
+    return Results.Ok();
+});
+
+// GET /api/agent/task/{mac} — Get pending task (alias for WinPE agent compatibility)
+app.MapGet("/api/agent/task/{mac}", async (string mac, IDeploymentService deploymentService) =>
+{
+    var task = await deploymentService.GetPendingTaskForClientAsync(mac);
+    return task is not null ? Results.Ok(task) : Results.NotFound();
+});
+
+// POST /api/agent/progress — Report progress from agent
+app.MapPost("/api/agent/progress", async (AgentProgressRequest request, IDeploymentService deploymentService) =>
+{
+    await deploymentService.UpdateTaskProgressAsync(request.TaskId, request.ProgressPercent, request.StatusMessage);
+    return Results.Ok();
+});
+
+// POST /api/agent/complete — Report completion from agent
+app.MapPost("/api/agent/complete", async (AgentCompleteRequest request, IDeploymentService deploymentService) =>
+{
+    await deploymentService.CompleteTaskAsync(request.TaskId, request.Success, request.ErrorMessage);
+    return Results.Ok();
+});
+
+// GET /api/agent/image/{id} — Download image file
+app.MapGet("/api/agent/image/{id:int}", async (int id, IImageService imageService) =>
+{
+    var image = await imageService.GetImageByIdAsync(id);
+    if (image is null || !File.Exists(image.FilePath))
+        return Results.NotFound();
+
+    return Results.File(image.FilePath, "application/octet-stream", Path.GetFileName(image.FilePath));
+});
+
 // ---------- Ensure database is created ----------
 using (var scope = app.Services.CreateScope())
 {
@@ -105,3 +178,14 @@ public record TaskProgressRequest(int ProgressPercent, string StatusMessage);
 
 /// <summary>Task completion report from WinPE agent.</summary>
 public record TaskCompleteRequest(bool Success, string? ErrorMessage);
+
+/// <summary>Heartbeat from ClientAgent.</summary>
+public record AgentHeartbeatRequest(
+    string MacAddress, string Hostname, string IpAddress,
+    string OsVersion, string? HardwareModel, bool IsOnline);
+
+/// <summary>Progress report from agent (includes TaskId in body).</summary>
+public record AgentProgressRequest(int TaskId, int ProgressPercent, string StatusMessage);
+
+/// <summary>Completion report from agent (includes TaskId in body).</summary>
+public record AgentCompleteRequest(int TaskId, bool Success, string? ErrorMessage);

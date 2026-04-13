@@ -23,7 +23,8 @@ public class ImageApplier
     /// <param name="wimPath">Full path to the WIM file (e.g. "X:\RollyRoll\deploy.wim").</param>
     /// <param name="targetDrive">Target drive letter including colon (e.g. "W:").</param>
     /// <param name="imageIndex">Image index within the WIM file (default: 1).</param>
-    public async Task ApplyImageAsync(string wimPath, string targetDrive, int imageIndex = 1)
+    /// <param name="efiDrive">EFI System Partition drive letter for UEFI boot config (e.g. "S:"). Null for BIOS.</param>
+    public async Task ApplyImageAsync(string wimPath, string targetDrive, int imageIndex = 1, string? efiDrive = null)
     {
         if (!File.Exists(wimPath))
             throw new FileNotFoundException($"WIM image not found: {wimPath}");
@@ -38,16 +39,17 @@ public class ImageApplier
         _logger.LogInformation("Image applied successfully to {Drive}", targetDrive);
 
         // Configure boot using bcdboot
-        await ConfigureBootAsync(targetDrive);
+        await ConfigureBootAsync(targetDrive, efiDrive);
     }
 
     /// <summary>
     /// Configure the boot manager using bcdboot.exe after image application.
-    /// Works for both UEFI and BIOS depending on the firmware type.
+    /// For UEFI: /s points to the EFI System Partition (ESP), /f UEFI.
+    /// For BIOS: /s points to the Windows partition, /f BIOS.
     /// </summary>
-    private async Task ConfigureBootAsync(string targetDrive)
+    private async Task ConfigureBootAsync(string targetDrive, string? efiDrive)
     {
-        _logger.LogInformation("Configuring boot for {Drive}", targetDrive);
+        _logger.LogInformation("Configuring boot for {Drive} (EFI={EfiDrive})", targetDrive, efiDrive ?? "N/A");
 
         var windowsDir = Path.Combine(targetDrive + "\\", "Windows");
         if (!Directory.Exists(windowsDir))
@@ -56,8 +58,17 @@ public class ImageApplier
             return;
         }
 
-        // bcdboot will auto-detect firmware type and configure accordingly
-        var args = $"{windowsDir} /s {targetDrive} /f ALL";
+        // For UEFI: /s must point to the EFI System Partition, not the Windows partition
+        // For BIOS: /s points to the active partition (Windows partition)
+        string args;
+        if (!string.IsNullOrEmpty(efiDrive))
+        {
+            args = $"{windowsDir} /s {efiDrive} /f UEFI";
+        }
+        else
+        {
+            args = $"{windowsDir} /s {targetDrive} /f BIOS";
+        }
 
         var psi = new ProcessStartInfo
         {

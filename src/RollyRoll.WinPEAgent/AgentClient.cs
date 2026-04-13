@@ -46,7 +46,7 @@ public class AgentClient : IDisposable
     {
         _logger.LogInformation("Requesting task for MAC {Mac}", macAddress);
 
-        var response = await _httpClient.GetAsync($"/api/agent/task/{Uri.EscapeDataString(macAddress)}");
+        var response = await _httpClient.GetAsync($"/api/task/{Uri.EscapeDataString(macAddress)}");
         if (!response.IsSuccessStatusCode)
         {
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -82,7 +82,7 @@ public class AgentClient : IDisposable
 
         try
         {
-            var response = await _httpClient.PostAsJsonAsync($"/api/agent/progress", payload, JsonOptions);
+            var response = await _httpClient.PostAsJsonAsync($"/api/task/{taskId}/progress", payload, JsonOptions);
             response.EnsureSuccessStatusCode();
         }
         catch (Exception ex)
@@ -106,7 +106,7 @@ public class AgentClient : IDisposable
             ErrorMessage = errorMessage
         };
 
-        var response = await _httpClient.PostAsJsonAsync($"/api/agent/complete", payload, JsonOptions);
+        var response = await _httpClient.PostAsJsonAsync($"/api/task/{taskId}/complete", payload, JsonOptions);
         response.EnsureSuccessStatusCode();
 
         _logger.LogInformation("Completion reported successfully for task {TaskId}", taskId);
@@ -121,7 +121,7 @@ public class AgentClient : IDisposable
         _logger.LogInformation("Downloading image {ImageId} to {Path}", imageId, localPath);
 
         using var response = await _httpClient.GetAsync(
-            $"/api/agent/image/{imageId}",
+            $"/api/agent/image/{imageId}", // served by Web/Program.cs
             HttpCompletionOption.ResponseHeadersRead);
 
         response.EnsureSuccessStatusCode();

@@ -97,18 +97,18 @@ public class PatchWorker : BackgroundService
             // Check if previous ring has completed successfully and delay period has passed
             if (previousRing != null)
             {
-                var previousRingReady = await IsRingCompleteAsync(patch, previousRing, deploymentService, ct);
+                var previousRingReady = await IsRingCompleteAsync(previousRing, deploymentService, ct);
                 if (!previousRingReady)
                 {
                     _logger.LogDebug("Patch {PatchTitle}: ring '{PreviousRing}' not yet complete, skipping '{CurrentRing}'",
                         patch.Title, previousRing.Name, ring.Name);
-                    break; // Stop processing further rings for this patch
+                    break;
                 }
 
                 // Check delay requirement
                 if (ring.DelayDaysAfterPrevious > 0)
                 {
-                    var delayMet = await HasDelayElapsedAsync(patch, previousRing, ring.DelayDaysAfterPrevious, deploymentService, ct);
+                    var delayMet = HasDelayElapsed(patch, previousRing, ring.DelayDaysAfterPrevious);
                     if (!delayMet)
                     {
                         _logger.LogDebug("Patch {PatchTitle}: delay period not met for ring '{RingName}'",
@@ -118,68 +118,68 @@ public class PatchWorker : BackgroundService
                 }
             }
 
-            // Check failure threshold for this ring
-            var failureCheck = await CheckFailureThresholdAsync(patch, ring, deploymentService, ct);
+            // Check failure threshold for this ring (queries ALL tasks including failed ones)
+            var failureCheck = await CheckFailureThresholdAsync(ring, deploymentService, ct);
             if (failureCheck.ThresholdExceeded)
             {
                 _logger.LogWarning(
-                    "Patch {PatchTitle}: failure threshold exceeded in ring '{RingName}' ({FailurePercent}% > {Threshold}%). Pausing rollout",
+                    "Patch {PatchTitle}: failure threshold exceeded in ring '{RingName}' ({FailurePercent:F0}% > {Threshold}%). Pausing rollout",
                     patch.Title, ring.Name, failureCheck.FailurePercent, ring.FailureThresholdPercent);
 
                 await patchService.PauseRolloutAsync(patch.Id,
-                    $"Failure threshold exceeded in ring '{ring.Name}': {failureCheck.FailurePercent}% failed (threshold: {ring.FailureThresholdPercent}%)", ct);
+                    $"Failure threshold exceeded in ring '{ring.Name}': {failureCheck.FailurePercent:F0}% failed (threshold: {ring.FailureThresholdPercent}%)", ct);
                 break;
             }
 
-            // Deploy to clients in this ring that haven't been patched yet
-            await DeployPatchToRingAsync(patch, ring, deploymentService, ct);
+            // Patch tasks are handled by the ClientAgent, not image-based deployment.
+            // Log that the ring is being processed — the actual installation is done by
+            // the PatchInstaller on each client which polls the server for approved patches.
+            _logger.LogInformation("Ring '{RingName}' is active for patch '{PatchTitle}'. " +
+                "ClientAgents in this ring's groups will pick up the patch on next check cycle.",
+                ring.Name, patch.Title);
         }
     }
 
+    /// <summary>
+    /// Check if all patch tasks in a ring's groups have completed (Success or Failed — not still Running/Queued).
+    /// Uses GetAllTasksForGroupAsync which includes ALL statuses, not just active ones.
+    /// </summary>
     private async Task<bool> IsRingCompleteAsync(
-        PatchPackage patch,
         PatchRolloutRing ring,
         IDeploymentService deploymentService,
         CancellationToken ct)
     {
-        // Check if all clients in the ring's groups have completed this patch
         foreach (var group in ring.Groups)
         {
-            var tasks = await deploymentService.GetActiveDeploymentsAsync(ct);
-            var pendingInGroup = tasks.Any(t =>
-                t.GroupId == group.Id &&
-                t.TaskType == ScheduledTaskType.PatchInstall &&
-                t.Status is DeploymentTaskStatus.Queued or DeploymentTaskStatus.Running or DeploymentTaskStatus.WaitingForClient);
+            var allTasks = await deploymentService.GetAllTasksForGroupAsync(group.Id, ScheduledTaskType.PatchInstall, ct);
 
-            if (pendingInGroup)
+            var hasPending = allTasks.Any(t =>
+                t.Status is DeploymentTaskStatus.Queued
+                    or DeploymentTaskStatus.Running
+                    or DeploymentTaskStatus.WaitingForClient
+                    or DeploymentTaskStatus.Scheduled);
+
+            if (hasPending)
                 return false;
         }
 
         return true;
     }
 
-    private Task<bool> HasDelayElapsedAsync(
-        PatchPackage patch,
-        PatchRolloutRing previousRing,
-        int delayDays,
-        IDeploymentService deploymentService,
-        CancellationToken ct)
+    private static bool HasDelayElapsed(PatchPackage patch, PatchRolloutRing previousRing, int delayDays)
     {
-        // For the delay calculation, we need the completion time of the previous ring.
-        // If the patch was approved more than delayDays ago, we consider the delay met
-        // as a simplified check. A full implementation would track per-ring completion times.
-        if (patch.ApprovedAt.HasValue)
-        {
-            var daysSinceApproval = (DateTime.UtcNow - patch.ApprovedAt.Value).TotalDays;
-            var totalDelayForThisRing = delayDays * (previousRing.Order);
-            return Task.FromResult(daysSinceApproval >= totalDelayForThisRing);
-        }
+        if (!patch.ApprovedAt.HasValue)
+            return false;
 
-        return Task.FromResult(false);
+        var daysSinceApproval = (DateTime.UtcNow - patch.ApprovedAt.Value).TotalDays;
+        var totalDelayForThisRing = delayDays * previousRing.Order;
+        return daysSinceApproval >= totalDelayForThisRing;
     }
 
+    /// <summary>
+    /// Check failure threshold using ALL tasks (including completed/failed), not just active ones.
+    /// </summary>
     private async Task<FailureCheckResult> CheckFailureThresholdAsync(
-        PatchPackage patch,
         PatchRolloutRing ring,
         IDeploymentService deploymentService,
         CancellationToken ct)
@@ -189,13 +189,9 @@ public class PatchWorker : BackgroundService
 
         foreach (var group in ring.Groups)
         {
-            var tasks = await deploymentService.GetActiveDeploymentsAsync(ct);
-            var groupTasks = tasks.Where(t =>
-                t.GroupId == group.Id &&
-                t.TaskType == ScheduledTaskType.PatchInstall).ToList();
-
-            totalClients += groupTasks.Count;
-            failedClients += groupTasks.Count(t => t.Status == DeploymentTaskStatus.Failed);
+            var allTasks = await deploymentService.GetAllTasksForGroupAsync(group.Id, ScheduledTaskType.PatchInstall, ct);
+            totalClients += allTasks.Count;
+            failedClients += allTasks.Count(t => t.Status == DeploymentTaskStatus.Failed);
         }
 
         var failurePercent = totalClients > 0 ? (double)failedClients / totalClients * 100 : 0;
@@ -207,35 +203,6 @@ public class PatchWorker : BackgroundService
             TotalClients = totalClients,
             FailedClients = failedClients
         };
-    }
-
-    private async Task DeployPatchToRingAsync(
-        PatchPackage patch,
-        PatchRolloutRing ring,
-        IDeploymentService deploymentService,
-        CancellationToken ct)
-    {
-        foreach (var group in ring.Groups)
-        {
-            if (ct.IsCancellationRequested) break;
-
-            _logger.LogInformation("Deploying patch '{PatchTitle}' to group '{GroupName}' in ring '{RingName}'",
-                patch.Title, group.Name, ring.Name);
-
-            try
-            {
-                await deploymentService.DeployToGroupAsync(
-                    imageId: 0, // Patch tasks don't use images
-                    groupId: group.Id,
-                    mode: DeployMode.CleanDeploy,
-                    ct: ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to deploy patch '{PatchTitle}' to group '{GroupName}'",
-                    patch.Title, group.Name);
-            }
-        }
     }
 
     private sealed class FailureCheckResult

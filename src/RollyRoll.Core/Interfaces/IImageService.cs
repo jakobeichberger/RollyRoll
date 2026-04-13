@@ -9,7 +9,7 @@ namespace RollyRoll.Core.Interfaces;
 public interface IImageService
 {
     /// <summary>Capture an image from a client's disk to a WIM file on the server.</summary>
-    Task<Image> CaptureImageAsync(string clientMac, string imageName, CompressionLevel compression, CancellationToken ct = default);
+    Task<Image> CaptureImageAsync(string clientMac, string imageName, ImageCompressionLevel compression, CancellationToken ct = default);
 
     /// <summary>Apply a WIM image to a client's disk.</summary>
     Task ApplyImageAsync(int imageId, string clientMac, DeployMode deployMode, CancellationToken ct = default);

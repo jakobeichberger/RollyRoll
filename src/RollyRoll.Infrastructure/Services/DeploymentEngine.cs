@@ -334,6 +334,20 @@ public class DeploymentEngine : IDeploymentService
         await _db.SaveChangesAsync(ct);
     }
 
+    /// <inheritdoc />
+    public async Task<List<ScheduledTask>> GetAllTasksForGroupAsync(
+        int groupId,
+        ScheduledTaskType taskType,
+        CancellationToken ct = default)
+    {
+        return await _db.ScheduledTasks
+            .Include(t => t.Client)
+            .Include(t => t.Image)
+            .Where(t => t.GroupId == groupId && t.TaskType == taskType)
+            .OrderBy(t => t.CreatedAt)
+            .ToListAsync(ct);
+    }
+
     /// <summary>
     /// Sends a Wake-on-LAN magic packet and transitions the task to <see cref="DeploymentTaskStatus.WaitingForClient"/>.
     /// </summary>

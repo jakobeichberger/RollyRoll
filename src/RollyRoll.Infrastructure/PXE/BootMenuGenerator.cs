@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RollyRoll.Core.Interfaces;
 using RollyRoll.Core.Models;
@@ -8,23 +9,22 @@ namespace RollyRoll.Infrastructure.PXE;
 /// Generates iPXE boot scripts dynamically per client.
 /// When a client boots iPXE, it requests a script from the RollyRoll HTTP endpoint.
 /// The script determines whether to boot into WinPE (if a task is pending) or local disk.
+///
+/// Uses IServiceScopeFactory to resolve scoped services since this is registered as a singleton.
 /// </summary>
 public class BootMenuGenerator
 {
     private readonly ILogger<BootMenuGenerator> _logger;
-    private readonly IDeploymentService _deploymentService;
-    private readonly IClientDiscoveryService _clientDiscovery;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly string _serverBaseUrl;
 
     public BootMenuGenerator(
         ILogger<BootMenuGenerator> logger,
-        IDeploymentService deploymentService,
-        IClientDiscoveryService clientDiscovery,
+        IServiceScopeFactory scopeFactory,
         string serverBaseUrl)
     {
         _logger = logger;
-        _deploymentService = deploymentService;
-        _clientDiscovery = clientDiscovery;
+        _scopeFactory = scopeFactory;
         _serverBaseUrl = serverBaseUrl.TrimEnd('/');
     }
 
@@ -37,8 +37,12 @@ public class BootMenuGenerator
         var normalizedMac = NormalizeMac(macAddress);
         _logger.LogInformation("Generating boot script for MAC: {Mac}", normalizedMac);
 
+        using var scope = _scopeFactory.CreateScope();
+        var deploymentService = scope.ServiceProvider.GetRequiredService<IDeploymentService>();
+        var clientDiscovery = scope.ServiceProvider.GetRequiredService<IClientDiscoveryService>();
+
         // Check if this client has a pending deployment task
-        var pendingTask = await _deploymentService.GetPendingTaskForClientAsync(normalizedMac, ct);
+        var pendingTask = await deploymentService.GetPendingTaskForClientAsync(normalizedMac, ct);
 
         if (pendingTask != null)
         {
@@ -48,11 +52,10 @@ public class BootMenuGenerator
         }
 
         // Check if client is known
-        var client = await _clientDiscovery.GetClientByMacAsync(normalizedMac, ct);
+        var client = await clientDiscovery.GetClientByMacAsync(normalizedMac, ct);
         if (client == null)
         {
             _logger.LogInformation("Unknown client {Mac}, registering and booting from local disk", normalizedMac);
-            // Client will be auto-registered by the DHCP proxy, just boot local
         }
         else
         {
@@ -160,11 +163,9 @@ public class BootMenuGenerator
 
     private static string NormalizeMac(string mac)
     {
-        // Normalize MAC address to XX:XX:XX:XX:XX:XX format
         var cleaned = mac.Replace("-", ":").Replace(".", ":").ToUpperInvariant();
         if (!cleaned.Contains(':'))
         {
-            // Handle bare hex format: AABBCCDDEEFF -> AA:BB:CC:DD:EE:FF
             if (cleaned.Length == 12)
             {
                 cleaned = string.Join(":", Enumerable.Range(0, 6).Select(i => cleaned.Substring(i * 2, 2)));

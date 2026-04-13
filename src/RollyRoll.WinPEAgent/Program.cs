@@ -60,16 +60,21 @@ try
     var localWimPath = Path.Combine("X:\\", "RollyRoll", "deploy.wim");
     Directory.CreateDirectory(Path.GetDirectoryName(localWimPath)!);
 
-    await agentClient.DownloadImageAsync(task.ImageId ?? 0, localWimPath, new Progress<int>(async percent =>
+    await agentClient.DownloadImageAsync(task.ImageId ?? 0, localWimPath, new Progress<int>(percent =>
     {
         // Map download progress to 25-60% of overall progress
         var overallProgress = 25 + (int)(percent * 0.35);
-        await agentClient.ReportProgressAsync(task.Id, overallProgress, $"Downloading image: {percent}%");
+        // Fire-and-forget with error handling to avoid async void exceptions
+        _ = Task.Run(async () =>
+        {
+            try { await agentClient.ReportProgressAsync(task.Id, overallProgress, $"Downloading image: {percent}%"); }
+            catch { /* Progress reporting is best-effort */ }
+        });
     }));
 
     await agentClient.ReportProgressAsync(task.Id, 60, "Applying image to disk...");
 
-    await imageApplier.ApplyImageAsync(localWimPath, partitionResult.WindowsDriveLetter);
+    await imageApplier.ApplyImageAsync(localWimPath, partitionResult.WindowsDriveLetter, efiDrive: partitionResult.EfiDriveLetter);
     logger.LogInformation("Image applied successfully");
 
     await agentClient.ReportProgressAsync(task.Id, 80, "Image applied successfully");
@@ -251,7 +256,9 @@ static string RunProcess(string fileName, string arguments)
     using var process = System.Diagnostics.Process.Start(psi)
         ?? throw new InvalidOperationException($"Failed to start process: {fileName}");
 
-    var output = process.StandardOutput.ReadToEnd();
+    // Read both streams concurrently to avoid deadlock when buffers fill
+    var outputTask = process.StandardOutput.ReadToEndAsync();
+    var errorTask = process.StandardError.ReadToEndAsync();
     process.WaitForExit();
-    return output;
+    return outputTask.Result;
 }

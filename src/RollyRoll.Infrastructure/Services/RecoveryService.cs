@@ -20,7 +20,7 @@ public class RecoveryService : IRecoveryService
 {
     private readonly ILogger<RecoveryService> _logger;
     private readonly RollyRollDbContext _db;
-    private readonly IUserProfileService _profileService;
+    private readonly IUserProfileService? _profileService;
     private readonly IDeploymentService _deploymentService;
 
     /// <summary>Default number of days to retain recovery snapshots.</summary>
@@ -34,18 +34,18 @@ public class RecoveryService : IRecoveryService
     /// </summary>
     /// <param name="logger">Logger for recovery operations.</param>
     /// <param name="db">Database context for persisting snapshots.</param>
-    /// <param name="profileService">Service for capturing and restoring user profiles.</param>
     /// <param name="deploymentService">Service for deploying images during recovery.</param>
+    /// <param name="profileService">Optional: service for capturing and restoring user profiles.</param>
     public RecoveryService(
         ILogger<RecoveryService> logger,
         RollyRollDbContext db,
-        IUserProfileService profileService,
-        IDeploymentService deploymentService)
+        IDeploymentService deploymentService,
+        IUserProfileService? profileService = null)
     {
         _logger = logger;
         _db = db;
-        _profileService = profileService;
         _deploymentService = deploymentService;
+        _profileService = profileService;
     }
 
     /// <inheritdoc />
@@ -69,10 +69,16 @@ public class RecoveryService : IRecoveryService
             .OrderByDescending(t => t.CompletedAt)
             .FirstOrDefaultAsync(ct);
 
-        // Capture current user profiles from the client
+        // Capture current user profiles from the client (if profile service is available)
         string? profilesPath = null;
         long profilesSizeBytes = 0;
 
+        if (_profileService is null)
+        {
+            _logger.LogWarning("IUserProfileService not available. Snapshot will be created without user profiles.");
+        }
+        else
+        {
         try
         {
             profilesPath = await _profileService.CaptureProfilesAsync(client.MacAddress, ct);
@@ -88,6 +94,7 @@ public class RecoveryService : IRecoveryService
                 "Failed to capture user profiles for client {Hostname}. Snapshot will be created without profiles.",
                 client.Hostname);
         }
+        } // end if (_profileService is not null)
 
         var snapshot = new RecoverySnapshot
         {
@@ -253,7 +260,7 @@ public class RecoveryService : IRecoveryService
     /// </summary>
     private async Task DeleteSnapshotDataAsync(RecoverySnapshot snapshot, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(snapshot.UserProfilesPath))
+        if (string.IsNullOrEmpty(snapshot.UserProfilesPath) || _profileService is null)
             return;
 
         try

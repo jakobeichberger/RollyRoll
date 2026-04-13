@@ -33,4 +33,7 @@ public interface IDeploymentService
 
     /// <summary>Mark task as completed or failed (called by WinPE agent).</summary>
     Task CompleteTaskAsync(int taskId, bool success, string? errorMessage = null, CancellationToken ct = default);
+
+    /// <summary>Get all tasks for a group with any status (including completed/failed). Used by patch rollout logic.</summary>
+    Task<List<ScheduledTask>> GetAllTasksForGroupAsync(int groupId, ScheduledTaskType taskType, CancellationToken ct = default);
 }

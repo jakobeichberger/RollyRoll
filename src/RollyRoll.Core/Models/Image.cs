@@ -40,7 +40,7 @@ public class Image
     public ImageType Type { get; set; }
 
     /// <summary>Compression level used during capture.</summary>
-    public CompressionLevel Compression { get; set; } = CompressionLevel.Fast;
+    public ImageCompressionLevel Compression { get; set; } = ImageCompressionLevel.Fast;
 
     /// <summary>SHA-256 hash of the WIM file for integrity verification.</summary>
     public string? FileHash { get; set; }

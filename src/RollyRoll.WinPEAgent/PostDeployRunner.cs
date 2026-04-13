@@ -199,6 +199,10 @@ public class PostDeployRunner
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException($"Failed to start process: {fileName}");
 
+        // Read stdout and stderr concurrently to avoid deadlocks
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
 
         try
@@ -211,10 +215,11 @@ public class PostDeployRunner
             throw new TimeoutException($"Process '{fileName}' timed out after {timeoutSeconds} seconds");
         }
 
+        var stderr = await stderrTask;
+
         if (process.ExitCode != 0)
         {
-            var error = await process.StandardError.ReadToEndAsync();
-            throw new InvalidOperationException($"Process '{fileName}' exited with code {process.ExitCode}: {error}");
+            throw new InvalidOperationException($"Process '{fileName}' exited with code {process.ExitCode}: {stderr}");
         }
     }
 

@@ -86,7 +86,7 @@
                     <div class="mb-3">
                         <label class="form-label">Compression</label>
                         <select class="form-select" @bind="captureCompression">
-                            @foreach (var level in Enum.GetValues<CompressionLevel>())
+                            @foreach (var level in Enum.GetValues<ImageCompressionLevel>())
                             {
                                 <option value="@level">@level</option>
                             }
@@ -155,7 +155,7 @@
     private bool showCapture;
     private string captureName = string.Empty;
     private string captureClientMac = string.Empty;
-    private CompressionLevel captureCompression = CompressionLevel.Fast;
+    private ImageCompressionLevel captureCompression = ImageCompressionLevel.Fast;
 
     // Deploy dialog state
     private bool showDeployDialog;
@@ -180,7 +180,7 @@
         captureClients = await ClientService.GetAllClientsAsync();
         captureName = string.Empty;
         captureClientMac = string.Empty;
-        captureCompression = CompressionLevel.Fast;
+        captureCompression = ImageCompressionLevel.Fast;
         showCapture = true;
     }
 

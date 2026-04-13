@@ -34,17 +34,16 @@ public class Program
                 services.AddDbContext<RollyRollDbContext>(options =>
                     options.UseSqlite(connectionString));
 
-                // PXE settings
+                // Configuration values
                 var pxeSection = configuration.GetSection("PxeSettings");
                 var tftpPort = pxeSection.GetValue("TftpPort", 69);
                 var tftpRoot = pxeSection.GetValue("TftpRoot", Path.Combine(AppContext.BaseDirectory, "TftpRoot"))!;
                 var serverIp = configuration.GetSection("NetworkSettings").GetValue("ServerIp", "0.0.0.0")!;
+                var serverBaseUrl = configuration.GetSection("NetworkSettings").GetValue("ServerBaseUrl", "http://localhost:5000")!;
 
-                // Image settings
                 var imageStorePath = configuration.GetSection("ImageSettings")
                     .GetValue("StorePath", Path.Combine(AppContext.BaseDirectory, "Images"))!;
 
-                // WoL settings
                 var wolSection = configuration.GetSection("WolSettings");
                 var wolPort = wolSection.GetValue("Port", 9);
                 var wolRetries = wolSection.GetValue("Retries", 3);
@@ -53,21 +52,9 @@ public class Program
                 Directory.CreateDirectory(tftpRoot);
                 Directory.CreateDirectory(imageStorePath);
 
-                // Register infrastructure services
-                services.AddSingleton(sp =>
-                    new TftpServer(sp.GetRequiredService<ILogger<TftpServer>>(), tftpRoot, tftpPort));
-
-                services.AddSingleton(sp =>
-                    new DhcpProxyService(
-                        sp.GetRequiredService<ILogger<DhcpProxyService>>(),
-                        sp.GetRequiredService<IClientDiscoveryService>(),
-                        serverIp));
-
-                services.AddScoped<IImageService>(sp =>
-                    new DismImageService(
-                        sp.GetRequiredService<ILogger<DismImageService>>(),
-                        sp.GetRequiredService<RollyRollDbContext>(),
-                        imageStorePath));
+                // ---------- Scoped services (depend on DbContext) ----------
+                services.AddScoped<IClientDiscoveryService, ClientDiscoveryService>();
+                services.AddScoped<ISettingsService, SettingsService>();
 
                 services.AddScoped<IWakeOnLanService>(sp =>
                     new WakeOnLanService(
@@ -76,81 +63,55 @@ public class Program
                         wolPort,
                         wolRetries));
 
+                services.AddScoped<IImageService>(sp =>
+                    new DismImageService(
+                        sp.GetRequiredService<ILogger<DismImageService>>(),
+                        sp.GetRequiredService<RollyRollDbContext>(),
+                        imageStorePath));
+
+                services.AddScoped<IDeploymentService, DeploymentEngine>();
+                services.AddScoped<IRecoveryService, RecoveryService>();
+
+                // ---------- Singleton services (no DbContext dependency) ----------
+                // TftpServer and DhcpProxyService are singletons that use IServiceScopeFactory
                 services.AddSingleton(sp =>
+                    new TftpServer(sp.GetRequiredService<ILogger<TftpServer>>(), tftpRoot, tftpPort));
+
+                services.AddSingleton<DhcpProxyService>(sp =>
+                    new DhcpProxyService(
+                        sp.GetRequiredService<ILogger<DhcpProxyService>>(),
+                        sp.GetRequiredService<IServiceScopeFactory>(),
+                        serverIp));
+
+                services.AddSingleton<BootMenuGenerator>(sp =>
                     new BootMenuGenerator(
                         sp.GetRequiredService<ILogger<BootMenuGenerator>>(),
-                        sp.GetRequiredService<IDeploymentService>(),
-                        sp.GetRequiredService<IClientDiscoveryService>(),
-                        configuration.GetSection("NetworkSettings").GetValue("ServerBaseUrl", "http://localhost:5000")!));
+                        sp.GetRequiredService<IServiceScopeFactory>(),
+                        serverBaseUrl));
 
-                // Background workers
+                services.AddSingleton<IAutoDiscoveryService, AutoDiscoveryService>();
+
+                // ---------- Background workers ----------
                 services.AddHostedService<PxeBootWorker>();
                 services.AddHostedService<DeploymentWorker>();
-                services.AddHostedService<PatchWorker>();
-                services.AddHostedService<SchedulerWorker>();
-            })
-            .ConfigureWebHostDefaults(webBuilder =>
-            {
-                webBuilder.UseStartup<WebStartup>();
+                // PatchWorker and SchedulerWorker depend on IPatchService/ISchedulerService
+                // which are not yet implemented — uncomment when ready:
+                // services.AddHostedService<PatchWorker>();
+                // services.AddHostedService<SchedulerWorker>();
             });
 
         var host = builder.Build();
 
-        // Ensure database is created and migrations are applied
+        // Ensure database is created and default settings are initialized
         using (var scope = host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<RollyRollDbContext>();
             await db.Database.EnsureCreatedAsync();
 
-            var settings = scope.ServiceProvider.GetService<ISettingsService>();
-            if (settings != null)
-            {
-                await settings.InitializeDefaultSettingsAsync();
-            }
+            var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+            await settings.InitializeDefaultSettingsAsync();
         }
 
         await host.RunAsync();
-    }
-}
-
-/// <summary>
-/// Minimal startup class for the Blazor web server hosted within the Windows Service.
-/// </summary>
-public class WebStartup
-{
-    private readonly IConfiguration _configuration;
-
-    public WebStartup(IConfiguration configuration)
-    {
-        _configuration = configuration;
-    }
-
-    public void ConfigureServices(IServiceCollection services)
-    {
-        services.AddRazorPages();
-        services.AddServerSideBlazor();
-    }
-
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-    {
-        if (env.IsDevelopment())
-        {
-            app.UseDeveloperExceptionPage();
-        }
-        else
-        {
-            app.UseExceptionHandler("/Error");
-            app.UseHsts();
-        }
-
-        app.UseHttpsRedirection();
-        app.UseStaticFiles();
-        app.UseRouting();
-
-        app.UseEndpoints(endpoints =>
-        {
-            endpoints.MapBlazorHub();
-            endpoints.MapFallbackToPage("/_Host");
-        });
     }
 }

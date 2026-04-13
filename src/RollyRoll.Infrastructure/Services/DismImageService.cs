@@ -34,7 +34,7 @@ public class DismImageService : IImageService
         Directory.CreateDirectory(_imageStorePath);
     }
 
-    public async Task<Image> CaptureImageAsync(string clientMac, string imageName, CompressionLevel compression, CancellationToken ct = default)
+    public async Task<Image> CaptureImageAsync(string clientMac, string imageName, ImageCompressionLevel compression, CancellationToken ct = default)
     {
         var sanitizedName = SanitizeFileName(imageName);
         var fileName = $"{sanitizedName}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.wim";
@@ -147,13 +147,13 @@ public class DismImageService : IImageService
     /// Build DISM command-line arguments for image capture.
     /// Called by WinPE agent to get the correct command.
     /// </summary>
-    public static string BuildCaptureCommand(string sourceDrive, string wimPath, string imageName, CompressionLevel compression)
+    public static string BuildCaptureCommand(string sourceDrive, string wimPath, string imageName, ImageCompressionLevel compression)
     {
         var compressArg = compression switch
         {
-            CompressionLevel.None => "none",
-            CompressionLevel.Fast => "fast",
-            CompressionLevel.Maximum => "max",
+            ImageCompressionLevel.None => "none",
+            ImageCompressionLevel.Fast => "fast",
+            ImageCompressionLevel.Maximum => "max",
             _ => "fast"
         };
 

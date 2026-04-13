@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RollyRoll.Core.Interfaces;
 using RollyRoll.Core.Models;
@@ -15,11 +16,14 @@ namespace RollyRoll.Infrastructure.Services;
 ///   - BIOS (Option 93 = 0)    -> undionly.kpxe
 ///   - UEFI 64-bit (Option 93 = 7/9) -> ipxe.efi
 ///   - UEFI 32-bit (Option 93 = 6)   -> ipxe32.efi
+///
+/// Uses IServiceScopeFactory to resolve scoped services (IClientDiscoveryService)
+/// since this service is registered as a singleton.
 /// </summary>
 public class DhcpProxyService : IDisposable
 {
     private readonly ILogger<DhcpProxyService> _logger;
-    private readonly IClientDiscoveryService _clientDiscovery;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly string _tftpServerIp;
     private UdpClient? _listener;
     private CancellationTokenSource? _cts;
@@ -28,7 +32,6 @@ public class DhcpProxyService : IDisposable
     private int _uefiRequests;
 
     // DHCP Option numbers
-    private const byte OptSubnetMask = 1;
     private const byte OptMessageType = 53;
     private const byte OptServerIdentifier = 54;
     private const byte OptVendorClassId = 60;
@@ -36,18 +39,15 @@ public class DhcpProxyService : IDisposable
     private const byte OptEnd = 255;
 
     // DHCP message types
-    private const byte DhcpDiscover = 1;
     private const byte DhcpOffer = 2;
-    private const byte DhcpRequest = 3;
-    private const byte DhcpAck = 5;
 
     public DhcpProxyService(
         ILogger<DhcpProxyService> logger,
-        IClientDiscoveryService clientDiscovery,
+        IServiceScopeFactory scopeFactory,
         string tftpServerIp)
     {
         _logger = logger;
-        _clientDiscovery = clientDiscovery;
+        _scopeFactory = scopeFactory;
         _tftpServerIp = tftpServerIp;
     }
 
@@ -144,11 +144,14 @@ public class DhcpProxyService : IDisposable
 
         _logger.LogInformation("PXE boot request: MAC={Mac}, Arch={BootType}, BootFile={BootFile}", macAddress, bootType, bootFile);
 
-        // Register/update the client in our database
-        await _clientDiscovery.RegisterFromPxeBootAsync(macAddress, bootType, remoteEp.Address.ToString(), ct);
+        // Register/update the client in our database using a scoped service
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var clientDiscovery = scope.ServiceProvider.GetRequiredService<IClientDiscoveryService>();
+            await clientDiscovery.RegisterFromPxeBootAsync(macAddress, bootType, remoteEp.Address.ToString(), ct);
+        }
 
         // Build and send DHCP Offer/Ack with boot file information
-        // In proxy mode, we send the boot filename and TFTP server address
         var response = BuildProxyResponse(data, bootFile);
         if (response != null)
         {
@@ -161,8 +164,7 @@ public class DhcpProxyService : IDisposable
     private byte[]? BuildProxyResponse(byte[] request, string bootFile)
     {
         // Build a minimal DHCP proxy response
-        // This is a simplified implementation — production would need full DHCP packet construction
-        var response = new byte[300];
+        var response = new byte[576]; // RFC 2131 minimum DHCP packet size
         response[0] = 2; // BOOTREPLY
         response[1] = request[1]; // Hardware type
         response[2] = request[2]; // Hardware address length
@@ -188,7 +190,7 @@ public class DhcpProxyService : IDisposable
         // DHCP options
         var optOffset = 240;
 
-        // Option 53: DHCP Message Type = Offer (2) or Ack (5)
+        // Option 53: DHCP Message Type = Offer (2)
         response[optOffset++] = OptMessageType;
         response[optOffset++] = 1;
         response[optOffset++] = DhcpOffer;

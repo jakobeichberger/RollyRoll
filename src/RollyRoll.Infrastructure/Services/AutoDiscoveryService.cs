@@ -246,6 +246,10 @@ public class AutoDiscoveryService : IAutoDiscoveryService
                 var result = await _broadcastListener.ReceiveAsync(ct);
                 var message = Encoding.UTF8.GetString(result.Buffer);
 
+                // Ignore our own announcements (starts with AnnounceMagic)
+                if (message.StartsWith(AnnounceMagic, StringComparison.Ordinal))
+                    continue;
+
                 if (message.StartsWith(DiscoveryMagic, StringComparison.Ordinal))
                 {
                     _logger.LogInformation(

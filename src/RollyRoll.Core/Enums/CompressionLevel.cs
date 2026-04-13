@@ -3,7 +3,7 @@ namespace RollyRoll.Core.Models;
 /// <summary>
 /// WIM compression level for image capture. Maps to DISM compression options.
 /// </summary>
-public enum CompressionLevel
+public enum ImageCompressionLevel
 {
     /// <summary>No compression — fastest capture, largest files.</summary>
     None,

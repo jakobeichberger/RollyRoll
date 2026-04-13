@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using RollyRoll.Core.Models;
 
 namespace RollyRoll.Infrastructure.Data;
@@ -34,6 +36,16 @@ public class RollyRollDbContext : DbContext
             entity.Property(e => e.OsVersion).HasMaxLength(100);
             entity.Property(e => e.HardwareModel).HasMaxLength(255);
             entity.Property(e => e.SerialNumber).HasMaxLength(100);
+            // Value converter for List<string> (EF Core can't map collections natively)
+            entity.Property(e => e.AdditionalMacAddresses)
+                  .HasConversion(
+                      v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                      v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
+                  .Metadata.SetValueComparer(new ValueComparer<List<string>>(
+                      (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null) == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
+                      v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
+                      v => JsonSerializer.Deserialize<List<string>>(JsonSerializer.Serialize(v, (JsonSerializerOptions?)null), (JsonSerializerOptions?)null)!));
+
             entity.HasOne(e => e.Group)
                   .WithMany(g => g.Clients)
                   .HasForeignKey(e => e.GroupId)
