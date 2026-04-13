@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>RollyRoll.Infrastructure</RootNamespace>
+    <Description>Infrastructure services: TFTP, DHCP proxy, DISM imaging, WoL, scheduling, and data access</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RollyRoll.Core\RollyRoll.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.*" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.*" />
+    <PackageReference Include="Hangfire.MemoryStorage" Version="1.8.*" />
+  </ItemGroup>
+
+</Project>

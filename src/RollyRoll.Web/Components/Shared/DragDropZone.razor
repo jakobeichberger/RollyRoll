@@ -1,0 +1,44 @@
+@* Reusable drag & drop container. Wraps child content in a droppable zone. *@
+
+<div class="@CombinedCss"
+     @ondragover="OnDragOver"
+     @ondragover:preventDefault="true"
+     @ondragleave="OnDragLeave"
+     @ondrop="OnDrop"
+     @ondrop:preventDefault="true">
+    @ChildContent
+</div>
+
+@code {
+    /// <summary>Child content to render inside the drop zone.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS class(es) for the container.</summary>
+    [Parameter]
+    public string CssClass { get; set; } = string.Empty;
+
+    /// <summary>Callback when a dragged item is dropped onto this zone.</summary>
+    [Parameter]
+    public EventCallback OnItemDropped { get; set; }
+
+    private bool isDragOver;
+
+    private string CombinedCss => $"{CssClass} {(isDragOver ? "drag-over" : "")}".Trim();
+
+    private void OnDragOver()
+    {
+        isDragOver = true;
+    }
+
+    private void OnDragLeave()
+    {
+        isDragOver = false;
+    }
+
+    private async Task OnDrop()
+    {
+        isDragOver = false;
+        await OnItemDropped.InvokeAsync();
+    }
+}

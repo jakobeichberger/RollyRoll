@@ -1,0 +1,224 @@
+@page "/images"
+@inject IImageService ImageService
+@inject IDeploymentService DeploymentService
+@inject IClientDiscoveryService ClientService
+
+<PageTitle>Images - RollyRoll</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Image Library</h1>
+    <div class="d-flex gap-2">
+        <button class="btn btn-accent" @onclick="ShowCaptureDialog">
+            <i class="bi bi-camera"></i> Capture New Image
+        </button>
+        <button class="btn btn-outline-light" @onclick="LoadImages">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+@* ── Storage Stats ── *@
+@if (storageStats is not null)
+{
+    <div class="card-dark p-3 mb-4">
+        <div class="row text-center">
+            <div class="col-md-4">
+                <div class="stat-label">Total Images</div>
+                <div class="fw-bold">@storageStats.TotalImages</div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-label">Storage Used</div>
+                <div class="fw-bold">@FormatBytes(storageStats.TotalSizeBytes)</div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-label">Available Space</div>
+                <div class="fw-bold">@FormatBytes(storageStats.AvailableSpaceBytes)</div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Image Cards ── *@
+<div class="row g-3">
+    @if (images.Count == 0)
+    {
+        <div class="col-12 text-center text-muted py-5">
+            <i class="bi bi-disc" style="font-size: 3rem;"></i>
+            <p class="mt-2">No images in the library. Capture or import one to get started.</p>
+        </div>
+    }
+    else
+    {
+        @foreach (var image in images)
+        {
+            <div class="col-md-4 col-lg-3">
+                <ImageCard Image="image" OnDeploy="OnDeployImage" OnDelete="OnDeleteImage" />
+            </div>
+        }
+    }
+</div>
+
+@* ── Capture Dialog ── *@
+@if (showCapture)
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.6);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header border-bottom" style="border-color: var(--rr-border) !important;">
+                    <h5 class="modal-title">Capture New Image</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => showCapture = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Image Name</label>
+                        <input type="text" class="form-control" @bind="captureName" placeholder="e.g. Win11-23H2-Base" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Source Client</label>
+                        <select class="form-select" @bind="captureClientMac">
+                            <option value="">Select a client...</option>
+                            @foreach (var c in captureClients)
+                            {
+                                <option value="@c.MacAddress">@c.Hostname (@c.MacAddress)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Compression</label>
+                        <select class="form-select" @bind="captureCompression">
+                            @foreach (var level in Enum.GetValues<CompressionLevel>())
+                            {
+                                <option value="@level">@level</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--rr-border) !important;">
+                    <button class="btn btn-secondary" @onclick="() => showCapture = false">Cancel</button>
+                    <button class="btn btn-accent" @onclick="StartCapture" disabled="@(string.IsNullOrWhiteSpace(captureName) || string.IsNullOrWhiteSpace(captureClientMac))">
+                        <i class="bi bi-camera"></i> Start Capture
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Deploy-to-Client Dialog ── *@
+@if (showDeployDialog)
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.6);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header border-bottom" style="border-color: var(--rr-border) !important;">
+                    <h5 class="modal-title">Deploy "@deployImage?.Name"</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => showDeployDialog = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Target Client</label>
+                        <select class="form-select" @bind="deployClientId">
+                            <option value="0">Select a client...</option>
+                            @foreach (var c in captureClients)
+                            {
+                                <option value="@c.Id">@c.Hostname (@c.MacAddress)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Deploy Mode</label>
+                        <select class="form-select" @bind="deployMode">
+                            @foreach (var mode in Enum.GetValues<DeployMode>())
+                            {
+                                <option value="@mode">@mode</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--rr-border) !important;">
+                    <button class="btn btn-secondary" @onclick="() => showDeployDialog = false">Cancel</button>
+                    <button class="btn btn-accent" @onclick="StartDeploy" disabled="@(deployClientId == 0)">
+                        <i class="bi bi-rocket-takeoff"></i> Deploy
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Image> images = [];
+    private ImageStorageStats? storageStats;
+    private List<Client> captureClients = [];
+
+    // Capture dialog state
+    private bool showCapture;
+    private string captureName = string.Empty;
+    private string captureClientMac = string.Empty;
+    private CompressionLevel captureCompression = CompressionLevel.Fast;
+
+    // Deploy dialog state
+    private bool showDeployDialog;
+    private Image? deployImage;
+    private int deployClientId;
+    private DeployMode deployMode = DeployMode.CleanDeploy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadImages();
+    }
+
+    private async Task LoadImages()
+    {
+        images = await ImageService.GetAllImagesAsync();
+        storageStats = await ImageService.GetStorageStatsAsync();
+        captureClients = await ClientService.GetAllClientsAsync();
+    }
+
+    private async Task ShowCaptureDialog()
+    {
+        captureClients = await ClientService.GetAllClientsAsync();
+        captureName = string.Empty;
+        captureClientMac = string.Empty;
+        captureCompression = CompressionLevel.Fast;
+        showCapture = true;
+    }
+
+    private async Task StartCapture()
+    {
+        if (string.IsNullOrWhiteSpace(captureName) || string.IsNullOrWhiteSpace(captureClientMac)) return;
+        await ImageService.CaptureImageAsync(captureClientMac, captureName, captureCompression);
+        showCapture = false;
+        await LoadImages();
+    }
+
+    private void OnDeployImage(Image image)
+    {
+        deployImage = image;
+        deployClientId = 0;
+        deployMode = DeployMode.CleanDeploy;
+        showDeployDialog = true;
+    }
+
+    private async Task StartDeploy()
+    {
+        if (deployImage is null || deployClientId == 0) return;
+        await DeploymentService.DeployToClientAsync(deployImage.Id, deployClientId, deployMode);
+        showDeployDialog = false;
+    }
+
+    private async Task OnDeleteImage(Image image)
+    {
+        await ImageService.DeleteImageAsync(image.Id);
+        images.Remove(image);
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        int i = 0;
+        double size = bytes;
+        while (size >= 1024 && i < suffixes.Length - 1) { size /= 1024; i++; }
+        return $"{size:F1} {suffixes[i]}";
+    }
+}

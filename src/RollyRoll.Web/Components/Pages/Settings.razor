@@ -1,0 +1,145 @@
+@page "/settings"
+@inject ISettingsService SettingsService
+
+<PageTitle>Settings - RollyRoll</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Settings</h1>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-light" @onclick="ExportSettings">
+            <i class="bi bi-download"></i> Export
+        </button>
+        <button class="btn btn-outline-light" @onclick="LoadSettings">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+@if (settingsGrouped.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-gear" style="font-size: 3rem;"></i>
+        <p class="mt-2">Loading settings...</p>
+    </div>
+}
+else
+{
+    @foreach (var category in settingsGrouped.OrderBy(kv => kv.Key))
+    {
+        <div class="card-dark p-3 mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="mb-0">@category.Key</h4>
+                <button class="btn btn-sm btn-outline-warning" @onclick="() => ResetCategory(category.Key)">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reset Category
+                </button>
+            </div>
+
+            @foreach (var setting in category.Value.OrderBy(s => s.SortOrder))
+            {
+                <div class="row g-2 align-items-center py-2 border-bottom" style="border-color: var(--rr-border) !important;">
+                    <div class="col-md-3">
+                        <div class="fw-bold">@setting.DisplayName</div>
+                        <small class="text-muted">@setting.Description</small>
+                    </div>
+                    <div class="col-md-3">
+                        @if (setting.ValueType == SettingValueType.Boolean)
+                        {
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox"
+                                       checked="@(setting.Value == "true")"
+                                       @onchange="e => UpdateSetting(setting, e.Value?.ToString() == "True" ? "true" : "false")" />
+                            </div>
+                        }
+                        else if (setting.ValueType == SettingValueType.Integer || setting.ValueType == SettingValueType.Port || setting.ValueType == SettingValueType.Percentage)
+                        {
+                            <input type="number" class="form-control form-control-sm" value="@setting.Value"
+                                   @onchange="e => UpdateSetting(setting, e.Value?.ToString() ?? "")" />
+                        }
+                        else
+                        {
+                            <input type="text" class="form-control form-control-sm" value="@setting.Value"
+                                   @onchange="e => UpdateSetting(setting, e.Value?.ToString() ?? "")" />
+                        }
+                    </div>
+                    <div class="col-md-2">
+                        <small class="text-muted">Default: <code>@setting.DefaultValue</code></small>
+                    </div>
+                    <div class="col-md-2">
+                        <span class="badge bg-secondary">@setting.ValueType</span>
+                    </div>
+                    <div class="col-md-2 text-end">
+                        @if (setting.Value != setting.DefaultValue)
+                        {
+                            <button class="btn btn-sm btn-outline-warning" @onclick="() => ResetSetting(setting)">
+                                <i class="bi bi-arrow-counterclockwise"></i> Reset
+                            </button>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Default</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@* ── Export Dialog ── *@
+@if (!string.IsNullOrEmpty(exportJson))
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.6);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header border-bottom" style="border-color: var(--rr-border) !important;">
+                    <h5 class="modal-title">Exported Settings (JSON)</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick='() => exportJson = ""'></button>
+                </div>
+                <div class="modal-body">
+                    <textarea class="form-control" rows="15" readonly>@exportJson</textarea>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--rr-border) !important;">
+                    <button class="btn btn-secondary" @onclick='() => exportJson = ""'>Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private Dictionary<string, List<ServerSetting>> settingsGrouped = new();
+    private string exportJson = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettings();
+    }
+
+    private async Task LoadSettings()
+    {
+        settingsGrouped = await SettingsService.GetAllSettingsGroupedAsync();
+    }
+
+    private async Task UpdateSetting(ServerSetting setting, string newValue)
+    {
+        await SettingsService.UpdateSettingAsync(setting.Key, newValue);
+        setting.Value = newValue;
+    }
+
+    private async Task ResetSetting(ServerSetting setting)
+    {
+        await SettingsService.ResetToDefaultAsync(setting.Key);
+        setting.Value = setting.DefaultValue;
+    }
+
+    private async Task ResetCategory(string category)
+    {
+        await SettingsService.ResetCategoryToDefaultsAsync(category);
+        await LoadSettings();
+    }
+
+    private async Task ExportSettings()
+    {
+        exportJson = await SettingsService.ExportSettingsAsync();
+    }
+}

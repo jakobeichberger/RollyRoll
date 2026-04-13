@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>RollyRoll.Core</RootNamespace>
+    <Description>Core domain models, interfaces, and enums for RollyRoll deployment platform</Description>
+  </PropertyGroup>
+
+</Project>

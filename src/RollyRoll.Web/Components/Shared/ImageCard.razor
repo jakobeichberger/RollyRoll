@@ -1,0 +1,69 @@
+@* Draggable image tile. Can be dragged onto a client or group for deployment. *@
+
+<div class="card-dark p-3 h-100" draggable="true" @ondragstart="OnDragStart" style="cursor: grab;">
+    <div class="d-flex justify-content-between align-items-start mb-2">
+        <div>
+            <i class="bi bi-disc me-1" style="color: var(--rr-accent);"></i>
+            <strong>@Image.Name</strong>
+        </div>
+        <span class="badge @TypeBadge">@Image.Type</span>
+    </div>
+
+    <div class="text-muted small mb-2">@Image.OsVersion</div>
+
+    <div class="d-flex justify-content-between small text-muted mb-2">
+        <span>@FormatBytes(Image.SizeBytes)</span>
+        <span>@Image.CapturedAt.ToString("d")</span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Image.SourceClientHostname))
+    {
+        <div class="small text-muted mb-2">
+            <i class="bi bi-pc-display me-1"></i> Captured from @Image.SourceClientHostname
+        </div>
+    }
+
+    @if (Image.IsDefault)
+    {
+        <span class="badge bg-success mb-2">Default</span>
+    }
+
+    <div class="d-flex gap-1 mt-auto">
+        <button class="btn btn-sm btn-accent flex-grow-1" @onclick="() => OnDeploy.InvokeAsync(Image)" @onclick:stopPropagation="true">
+            <i class="bi bi-rocket-takeoff"></i> Deploy
+        </button>
+        <button class="btn btn-sm btn-outline-danger" @onclick="() => OnDelete.InvokeAsync(Image)" @onclick:stopPropagation="true">
+            <i class="bi bi-trash"></i>
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Image Image { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<Image> OnDeploy { get; set; }
+
+    [Parameter]
+    public EventCallback<Image> OnDelete { get; set; }
+
+    /// <summary>Expose dragged image for cross-component drag & drop.</summary>
+    public static Image? DraggedImage { get; private set; }
+
+    private string TypeBadge => Image.Type == ImageType.GoldImage ? "bg-warning text-dark" : "bg-info";
+
+    private void OnDragStart()
+    {
+        DraggedImage = Image;
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        int i = 0;
+        double size = bytes;
+        while (size >= 1024 && i < suffixes.Length - 1) { size /= 1024; i++; }
+        return $"{size:F1} {suffixes[i]}";
+    }
+}

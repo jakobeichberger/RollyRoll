@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>RollyRoll.WinPEAgent</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <Description>Minimal agent that runs inside WinPE during image deployment and capture</Description>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RollyRoll.Core\RollyRoll.Core.csproj" />
+  </ItemGroup>
+
+</Project>

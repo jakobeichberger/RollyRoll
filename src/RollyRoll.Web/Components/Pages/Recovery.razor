@@ -1,0 +1,198 @@
+@page "/recovery"
+@inject IRecoveryService RecoveryService
+@inject IClientDiscoveryService ClientService
+
+<PageTitle>Recovery - RollyRoll</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Recovery</h1>
+    <button class="btn btn-outline-light" @onclick="LoadData">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+</div>
+
+<p class="text-muted mb-4">
+    Recovery snapshots are automatically created before deployments and patch installations.
+    Select a client to view its snapshots or trigger a manual recovery.
+</p>
+
+@* ── Client Selector ── *@
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <label class="form-label">Select Client</label>
+        <select class="form-select" @bind="selectedClientId" @bind:after="OnClientSelected">
+            <option value="0">Choose a client...</option>
+            @foreach (var client in clients)
+            {
+                <option value="@client.Id">
+                    @(string.IsNullOrEmpty(client.Hostname) ? client.MacAddress : client.Hostname)
+                    (@client.MacAddress)
+                </option>
+            }
+        </select>
+    </div>
+    @if (selectedClientId > 0)
+    {
+        <div class="col-md-4 d-flex align-items-end">
+            <button class="btn btn-danger" @onclick="RecoverLatest" disabled="@(!snapshots.Any())">
+                <i class="bi bi-arrow-counterclockwise"></i> Recover to Latest Snapshot
+            </button>
+        </div>
+    }
+</div>
+
+@* ── Snapshots Table ── *@
+@if (selectedClientId > 0)
+{
+    <div class="card-dark">
+        <div class="table-responsive">
+            <table class="table table-dark-custom table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Created</th>
+                        <th>Reason</th>
+                        <th>Image</th>
+                        <th>Profiles Size</th>
+                        <th>Encrypted</th>
+                        <th>Used for Recovery</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (snapshots.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">No recovery snapshots for this client.</td>
+                        </tr>
+                    }
+                    @foreach (var snap in snapshots)
+                    {
+                        <tr>
+                            <td>@snap.CreatedAt.ToString("g")</td>
+                            <td>@snap.Reason</td>
+                            <td>
+                                @if (snap.Image is not null)
+                                {
+                                    <span class="badge bg-info">@snap.Image.Name</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">None</span>
+                                }
+                            </td>
+                            <td>@FormatBytes(snap.UserProfilesSizeBytes)</td>
+                            <td>
+                                @if (snap.IsEncrypted)
+                                {
+                                    <i class="bi bi-lock-fill text-success"></i>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-unlock text-warning"></i>
+                                }
+                            </td>
+                            <td>
+                                @if (snap.WasUsedForRecovery)
+                                {
+                                    <span class="badge badge-online">Yes &mdash; @snap.RecoveredAt?.ToString("g")</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">No</span>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-warning" @onclick="() => RecoverToSnapshot(snap)"
+                                        title="Recover to this snapshot">
+                                    <i class="bi bi-arrow-counterclockwise"></i> Recover
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@* ── Confirmation Dialog ── *@
+@if (showConfirm)
+{
+    <ConfirmDialog Title="Confirm Recovery"
+                   Message="@confirmMessage"
+                   OnConfirm="ExecuteRecovery"
+                   OnCancel="() => showConfirm = false" />
+}
+
+@code {
+    private List<Client> clients = [];
+    private List<RecoverySnapshot> snapshots = [];
+    private int selectedClientId;
+
+    // Confirm dialog
+    private bool showConfirm;
+    private string confirmMessage = string.Empty;
+    private int? recoverSnapshotId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        clients = await ClientService.GetAllClientsAsync();
+    }
+
+    private async Task OnClientSelected()
+    {
+        if (selectedClientId > 0)
+        {
+            snapshots = await RecoveryService.GetSnapshotsForClientAsync(selectedClientId);
+        }
+        else
+        {
+            snapshots = [];
+        }
+    }
+
+    private void RecoverLatest()
+    {
+        recoverSnapshotId = null;
+        confirmMessage = "This will restore the client to its latest known-good snapshot. The client will reboot into WinPE and the recovery image will be applied. Continue?";
+        showConfirm = true;
+    }
+
+    private void RecoverToSnapshot(RecoverySnapshot snapshot)
+    {
+        recoverSnapshotId = snapshot.Id;
+        confirmMessage = $"This will restore the client to the snapshot from {snapshot.CreatedAt:g} ({snapshot.Reason}). The client will reboot and the recovery image will be applied. Continue?";
+        showConfirm = true;
+    }
+
+    private async Task ExecuteRecovery()
+    {
+        showConfirm = false;
+        if (selectedClientId <= 0) return;
+
+        if (recoverSnapshotId.HasValue)
+        {
+            await RecoveryService.InitiateRecoveryAsync(selectedClientId, recoverSnapshotId.Value);
+        }
+        else
+        {
+            await RecoveryService.InitiateRecoveryAsync(selectedClientId);
+        }
+
+        await OnClientSelected();
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        int i = 0;
+        double size = bytes;
+        while (size >= 1024 && i < suffixes.Length - 1) { size /= 1024; i++; }
+        return $"{size:F1} {suffixes[i]}";
+    }
+}

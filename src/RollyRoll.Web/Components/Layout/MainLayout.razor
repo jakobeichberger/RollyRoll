@@ -1,0 +1,46 @@
+@inherits LayoutComponentBase
+
+<div class="sidebar">
+    <div class="brand">
+        <i class="bi bi-hdd-rack"></i> RollyRoll
+    </div>
+    <nav>
+        <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+            <i class="bi bi-grid-1x2"></i> Dashboard
+        </NavLink>
+        <NavLink class="nav-link" href="/clients">
+            <i class="bi bi-pc-display"></i> Clients
+        </NavLink>
+        <NavLink class="nav-link" href="/images">
+            <i class="bi bi-disc"></i> Images
+        </NavLink>
+        <NavLink class="nav-link" href="/groups">
+            <i class="bi bi-diagram-3"></i> Groups
+        </NavLink>
+        <NavLink class="nav-link" href="/templates">
+            <i class="bi bi-file-earmark-code"></i> Templates
+        </NavLink>
+        <NavLink class="nav-link" href="/schedule">
+            <i class="bi bi-calendar-week"></i> Schedule
+        </NavLink>
+        <NavLink class="nav-link" href="/patches">
+            <i class="bi bi-shield-check"></i> Patches
+        </NavLink>
+        <NavLink class="nav-link" href="/drivers">
+            <i class="bi bi-cpu"></i> Drivers
+        </NavLink>
+        <NavLink class="nav-link" href="/recovery">
+            <i class="bi bi-arrow-counterclockwise"></i> Recovery
+        </NavLink>
+        <NavLink class="nav-link" href="/settings">
+            <i class="bi bi-gear"></i> Settings
+        </NavLink>
+        <NavLink class="nav-link" href="/audit-log">
+            <i class="bi bi-journal-text"></i> Audit Log
+        </NavLink>
+    </nav>
+</div>
+
+<div class="main-content">
+    @Body
+</div>

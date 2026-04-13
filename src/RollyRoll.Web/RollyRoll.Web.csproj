@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>RollyRoll.Web</RootNamespace>
+    <Description>Blazor Server management UI with drag-and-drop deployment and real-time monitoring</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RollyRoll.Core\RollyRoll.Core.csproj" />
+    <ProjectReference Include="..\RollyRoll.Infrastructure\RollyRoll.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

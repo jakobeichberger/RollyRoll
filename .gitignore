@@ -1,0 +1,68 @@
+## .NET
+bin/
+obj/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## NuGet
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nupkg
+**/[Pp]ackages/repositories.config
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Visual Studio
+.vs/
+*.rsuser
+*.sln.docstates
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+## Build
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+bld/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+msbuild.log
+msbuild.err
+msbuild.wrn
+
+## OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## IDE
+.idea/
+*.swp
+*.swo
+*~
+
+## Environment/secrets
+*.env
+*.pfx
+*.key
+appsettings.Development.json
+appsettings.Local.json
+
+## Database files
+*.db
+*.db-shm
+*.db-wal
+
+## iPXE binaries (download separately)
+installer/ipxe/*.kpxe
+installer/ipxe/*.efi
+src/RollyRoll.Infrastructure/PXE/iPXE/*.kpxe
+src/RollyRoll.Infrastructure/PXE/iPXE/*.efi

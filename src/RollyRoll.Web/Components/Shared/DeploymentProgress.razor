@@ -1,0 +1,86 @@
+@* Real-time deployment progress bar. Updates via SignalR through parent binding. *@
+
+<div class="card-dark p-3 mb-2" style="background: var(--rr-sidebar);">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+        <div>
+            <span class="badge @StatusBadge me-2">@Task.Status</span>
+            <strong>@Task.Name</strong>
+        </div>
+        <div class="text-muted small">
+            @if (Task.Client is not null)
+            {
+                <i class="bi bi-pc-display me-1"></i>
+                @Task.Client.Hostname
+            }
+            else if (Task.Group is not null)
+            {
+                <i class="bi bi-diagram-3 me-1"></i>
+                @Task.Group.Name
+            }
+        </div>
+    </div>
+
+    <div class="progress mb-1" style="height: 8px; background-color: var(--rr-border);">
+        <div class="progress-bar @ProgressBarClass"
+             role="progressbar"
+             style="width: @Task.ProgressPercent%;"
+             aria-valuenow="@Task.ProgressPercent"
+             aria-valuemin="0"
+             aria-valuemax="100">
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between small">
+        <span class="text-muted">@Task.StatusMessage</span>
+        <span class="text-muted">@Task.ProgressPercent%</span>
+    </div>
+
+    @if (Task.StartedAt.HasValue)
+    {
+        <div class="small text-muted mt-1">
+            Started: @Task.StartedAt.Value.ToString("g")
+            @if (Task.CompletedAt.HasValue)
+            {
+                <span> &mdash; Completed: @Task.CompletedAt.Value.ToString("g")</span>
+            }
+            else
+            {
+                var elapsed = DateTime.UtcNow - Task.StartedAt.Value;
+                <span> &mdash; Elapsed: @elapsed.ToString(@"hh\:mm\:ss")</span>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(Task.ErrorMessage))
+    {
+        <div class="small text-danger mt-1">
+            <i class="bi bi-exclamation-triangle me-1"></i> @Task.ErrorMessage
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ScheduledTask Task { get; set; } = default!;
+
+    private string StatusBadge => Task.Status switch
+    {
+        DeploymentTaskStatus.Running => "badge-running",
+        DeploymentTaskStatus.Success => "badge-online",
+        DeploymentTaskStatus.Failed => "badge-failed",
+        DeploymentTaskStatus.RolledBack => "bg-danger",
+        DeploymentTaskStatus.Queued => "badge-queued",
+        DeploymentTaskStatus.WaitingForClient => "bg-info",
+        DeploymentTaskStatus.Cancelled => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private string ProgressBarClass => Task.Status switch
+    {
+        DeploymentTaskStatus.Running => "bg-primary progress-bar-striped progress-bar-animated",
+        DeploymentTaskStatus.Success => "bg-success",
+        DeploymentTaskStatus.Failed => "bg-danger",
+        DeploymentTaskStatus.RolledBack => "bg-danger",
+        _ => "bg-primary"
+    };
+}

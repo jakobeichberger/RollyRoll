@@ -1,0 +1,52 @@
+@* Modal confirmation dialog for destructive actions. *@
+
+<div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.6);">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header border-bottom" style="border-color: var(--rr-border) !important;">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle text-warning me-2"></i>
+                    @Title
+                </h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="OnCancel"></button>
+            </div>
+            <div class="modal-body">
+                <p>@Message</p>
+            </div>
+            <div class="modal-footer border-top" style="border-color: var(--rr-border) !important;">
+                <button class="btn btn-secondary" @onclick="OnCancel">
+                    @CancelText
+                </button>
+                <button class="btn @ConfirmButtonClass" @onclick="OnConfirm">
+                    <i class="bi @ConfirmIcon me-1"></i> @ConfirmText
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "Confirm Action";
+
+    [Parameter]
+    public string Message { get; set; } = "Are you sure you want to proceed?";
+
+    [Parameter]
+    public string ConfirmText { get; set; } = "Confirm";
+
+    [Parameter]
+    public string CancelText { get; set; } = "Cancel";
+
+    [Parameter]
+    public string ConfirmButtonClass { get; set; } = "btn-danger";
+
+    [Parameter]
+    public string ConfirmIcon { get; set; } = "bi-check-lg";
+
+    [Parameter]
+    public EventCallback OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+}

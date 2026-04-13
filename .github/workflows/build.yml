@@ -1,0 +1,93 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore RollyRoll.sln
+
+    - name: Build
+      run: dotnet build RollyRoll.sln --no-restore --configuration Release
+
+    - name: Test
+      run: dotnet test RollyRoll.sln --no-build --configuration Release --verbosity normal
+
+    - name: Publish Windows Service
+      run: dotnet publish src/RollyRoll.WindowsService/RollyRoll.WindowsService.csproj -c Release -r win-x64 --self-contained -o publish/service
+
+    - name: Publish WinPE Agent
+      run: dotnet publish src/RollyRoll.WinPEAgent/RollyRoll.WinPEAgent.csproj -c Release -r win-x64 --self-contained -o publish/winpe-agent
+
+    - name: Publish Client Agent
+      run: dotnet publish src/RollyRoll.ClientAgent/RollyRoll.ClientAgent.csproj -c Release -r win-x64 --self-contained -o publish/client-agent
+
+    - name: Upload Service Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rollyroll-service
+        path: publish/service/
+
+    - name: Upload WinPE Agent Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rollyroll-winpe-agent
+        path: publish/winpe-agent/
+
+    - name: Upload Client Agent Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rollyroll-client-agent
+        path: publish/client-agent/
+
+  release:
+    needs: build
+    runs-on: windows-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Download Service Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: rollyroll-service
+        path: release/service/
+
+    - name: Download WinPE Agent
+      uses: actions/download-artifact@v4
+      with:
+        name: rollyroll-winpe-agent
+        path: release/winpe-agent/
+
+    - name: Download Client Agent
+      uses: actions/download-artifact@v4
+      with:
+        name: rollyroll-client-agent
+        path: release/client-agent/
+
+    - name: Create Release Package
+      run: |
+        Compress-Archive -Path release/* -DestinationPath RollyRoll-Release.zip
+
+    - name: Upload Release Package
+      uses: actions/upload-artifact@v4
+      with:
+        name: rollyroll-release
+        path: RollyRoll-Release.zip

@@ -1,0 +1,248 @@
+@page "/drivers"
+@inject IPatchService PatchService
+@using Microsoft.EntityFrameworkCore
+@inject RollyRoll.Infrastructure.Data.RollyRollDbContext DbContext
+
+<PageTitle>Drivers - RollyRoll</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Driver Catalog</h1>
+    <div class="d-flex gap-2">
+        <button class="btn btn-accent" @onclick="ShowUploadDialog">
+            <i class="bi bi-upload"></i> Upload Driver Package
+        </button>
+        <button class="btn btn-outline-light" @onclick="LoadDrivers">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+@* ── Driver Packages ── *@
+<div class="card-dark">
+    <div class="table-responsive">
+        <table class="table table-dark-custom table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Version</th>
+                    <th>Severity</th>
+                    <th>Size</th>
+                    <th>Approved</th>
+                    <th>Released</th>
+                    <th>Reboot</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (drivers.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">
+                            <i class="bi bi-cpu" style="font-size: 2rem;"></i>
+                            <p class="mt-2 mb-0">No driver packages. Upload one or sync from catalog.</p>
+                        </td>
+                    </tr>
+                }
+                @foreach (var driver in drivers)
+                {
+                    <tr>
+                        <td>@driver.Title</td>
+                        <td><code>@driver.Version</code></td>
+                        <td><span class="badge @GetSeverityBadge(driver.Severity)">@driver.Severity</span></td>
+                        <td>@FormatBytes(driver.SizeBytes)</td>
+                        <td>
+                            @if (driver.IsApproved)
+                            {
+                                <span class="badge badge-online">Approved</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-offline">Pending</span>
+                            }
+                        </td>
+                        <td>@driver.ReleaseDate?.ToString("d")</td>
+                        <td>@(driver.RequiresReboot ? "Yes" : "No")</td>
+                        <td>
+                            @if (!driver.IsApproved)
+                            {
+                                <button class="btn btn-sm btn-outline-success" @onclick="() => ApproveDriver(driver)">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-warning" @onclick="() => RevokeDriver(driver)">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@* ── Driver Update Policies ── *@
+<div class="card-dark p-3 mt-4">
+    <h5 class="mb-3">Driver Update Policies</h5>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card-dark p-3" style="background: var(--rr-sidebar);">
+                <h6>Auto-Approve Critical Drivers</h6>
+                <p class="text-muted small">Automatically approve drivers marked as Critical severity.</p>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" @bind="autoApproveCritical" />
+                    <label class="form-check-label">@(autoApproveCritical ? "Enabled" : "Disabled")</label>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card-dark p-3" style="background: var(--rr-sidebar);">
+                <h6>Use Rollout Rings for Drivers</h6>
+                <p class="text-muted small">Deploy driver updates through the same rollout rings as patches.</p>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" @bind="useRolloutRings" />
+                    <label class="form-check-label">@(useRolloutRings ? "Enabled" : "Disabled")</label>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card-dark p-3" style="background: var(--rr-sidebar);">
+                <h6>Create Recovery Snapshot</h6>
+                <p class="text-muted small">Create a recovery snapshot before installing driver updates.</p>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" @bind="snapshotBeforeDrivers" />
+                    <label class="form-check-label">@(snapshotBeforeDrivers ? "Enabled" : "Disabled")</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Upload Dialog ── *@
+@if (showUpload)
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.6);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header border-bottom" style="border-color: var(--rr-border) !important;">
+                    <h5 class="modal-title">Upload Driver Package</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => showUpload = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Title</label>
+                        <input type="text" class="form-control" @bind="uploadTitle" placeholder="e.g. Realtek NIC Driver v2.1" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Version</label>
+                        <input type="text" class="form-control" @bind="uploadVersion" placeholder="e.g. 2.1.0.0" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Silent Install Arguments</label>
+                        <input type="text" class="form-control" @bind="uploadSilentArgs" placeholder="e.g. /s /norestart" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Driver Package File</label>
+                        <InputFile class="form-control" OnChange="OnFileSelected" />
+                    </div>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--rr-border) !important;">
+                    <button class="btn btn-secondary" @onclick="() => showUpload = false">Cancel</button>
+                    <button class="btn btn-accent" @onclick="UploadDriver"
+                            disabled="@(string.IsNullOrWhiteSpace(uploadTitle) || uploadFile is null)">
+                        <i class="bi bi-upload"></i> Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<PatchPackage> drivers = [];
+
+    // Upload dialog
+    private bool showUpload;
+    private string uploadTitle = string.Empty;
+    private string uploadVersion = string.Empty;
+    private string uploadSilentArgs = string.Empty;
+    private IBrowserFile? uploadFile;
+
+    // Policies
+    private bool autoApproveCritical;
+    private bool useRolloutRings = true;
+    private bool snapshotBeforeDrivers = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDrivers();
+    }
+
+    private async Task LoadDrivers()
+    {
+        // Filter patch packages to only show Driver source
+        var allPatches = await DbContext.PatchPackages
+            .Where(p => p.Source == PatchSource.Driver)
+            .OrderByDescending(p => p.DiscoveredAt)
+            .ToListAsync();
+        drivers = allPatches;
+    }
+
+    private void ShowUploadDialog()
+    {
+        uploadTitle = string.Empty;
+        uploadVersion = string.Empty;
+        uploadSilentArgs = string.Empty;
+        uploadFile = null;
+        showUpload = true;
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        uploadFile = e.File;
+    }
+
+    private async Task UploadDriver()
+    {
+        if (uploadFile is null || string.IsNullOrWhiteSpace(uploadTitle)) return;
+
+        using var stream = uploadFile.OpenReadStream(maxAllowedSize: 500 * 1024 * 1024);
+        await PatchService.UploadThirdPartyPatchAsync(
+            uploadTitle, uploadVersion, stream, uploadFile.Name, uploadSilentArgs);
+
+        showUpload = false;
+        await LoadDrivers();
+    }
+
+    private async Task ApproveDriver(PatchPackage driver)
+    {
+        await PatchService.ApprovePatchAsync(driver.Id, "admin");
+        driver.IsApproved = true;
+    }
+
+    private async Task RevokeDriver(PatchPackage driver)
+    {
+        await PatchService.RevokePatchAsync(driver.Id);
+        driver.IsApproved = false;
+    }
+
+    private static string GetSeverityBadge(PatchSeverity severity) => severity switch
+    {
+        PatchSeverity.Critical => "bg-danger",
+        PatchSeverity.Important => "bg-warning text-dark",
+        PatchSeverity.Moderate => "bg-info",
+        PatchSeverity.Low => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        int i = 0;
+        double size = bytes;
+        while (size >= 1024 && i < suffixes.Length - 1) { size /= 1024; i++; }
+        return $"{size:F1} {suffixes[i]}";
+    }
+}

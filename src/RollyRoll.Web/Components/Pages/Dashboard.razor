@@ -1,0 +1,177 @@
+@page "/"
+@inject IClientDiscoveryService ClientService
+@inject IDeploymentService DeploymentService
+@inject IPatchService PatchService
+@inject IAuditService AuditService
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<PageTitle>Dashboard - RollyRoll</PageTitle>
+
+<h1 class="mb-4">Dashboard</h1>
+
+@* ── Fleet Overview Stats ── *@
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-label">Total Clients</div>
+            <div class="stat-value">@totalClients</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-label">Online</div>
+            <div class="stat-value text-success">@onlineClients</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-label">Offline</div>
+            <div class="stat-value" style="color: var(--rr-muted);">@offlineClients</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-label">Patch Compliance</div>
+            <div class="stat-value" style="color: var(--rr-warning);">@compliancePercent.ToString("F0")%</div>
+        </div>
+    </div>
+</div>
+
+@* ── Active Deployments ── *@
+<div class="card-dark p-3 mb-4">
+    <h5 class="mb-3"><i class="bi bi-rocket-takeoff me-2"></i>Active Deployments</h5>
+    @if (activeDeployments.Count == 0)
+    {
+        <p class="text-muted mb-0">No active deployments.</p>
+    }
+    else
+    {
+        @foreach (var task in activeDeployments)
+        {
+            <DeploymentProgress Task="task" />
+        }
+    }
+</div>
+
+@* ── Recent Alerts ── *@
+<div class="card-dark p-3">
+    <h5 class="mb-3"><i class="bi bi-bell me-2"></i>Recent Activity</h5>
+    @if (recentEntries.Count == 0)
+    {
+        <p class="text-muted mb-0">No recent activity.</p>
+    }
+    else
+    {
+        <div class="list-group list-group-flush">
+            @foreach (var entry in recentEntries)
+            {
+                <div class="list-group-item bg-transparent border-bottom" style="border-color: var(--rr-border) !important;">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="badge @GetCategoryBadgeClass(entry.Category) me-2">@entry.Category</span>
+                            <strong>@entry.Action</strong>
+                            @if (!string.IsNullOrEmpty(entry.TargetName))
+                            {
+                                <span class="text-muted"> &mdash; @entry.TargetName</span>
+                            }
+                        </div>
+                        <small class="text-muted">@entry.Timestamp.ToString("g")</small>
+                    </div>
+                    @if (!string.IsNullOrEmpty(entry.Details))
+                    {
+                        <small class="text-muted d-block mt-1">@entry.Details</small>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private int totalClients;
+    private int onlineClients;
+    private int offlineClients;
+    private double compliancePercent;
+    private List<ScheduledTask> activeDeployments = [];
+    private List<AuditLogEntry> recentEntries = [];
+    private HubConnection? hubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+        await StartSignalRAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        var clients = await ClientService.GetAllClientsAsync();
+        totalClients = clients.Count;
+        onlineClients = clients.Count(c => c.IsOnline);
+        offlineClients = totalClients - onlineClients;
+
+        activeDeployments = await DeploymentService.GetActiveDeploymentsAsync();
+
+        var compliance = await PatchService.GetComplianceReportAsync();
+        compliancePercent = compliance.CompliancePercent;
+
+        recentEntries = await AuditService.GetEntriesAsync(take: 10);
+    }
+
+    private async Task StartSignalRAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/deployment"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<int, int, string>("ReceiveProgress", async (taskId, percent, message) =>
+        {
+            var task = activeDeployments.FirstOrDefault(t => t.Id == taskId);
+            if (task is not null)
+            {
+                task.ProgressPercent = percent;
+                task.StatusMessage = message;
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        hubConnection.On<int, bool, string?>("ReceiveTaskComplete", async (taskId, success, error) =>
+        {
+            await LoadDataAsync();
+            await InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<string, string, string>("ReceiveAlert", async (severity, title, message) =>
+        {
+            await LoadDataAsync();
+            await InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<int, string, string>("ReceiveClientDiscovered", async (clientId, mac, hostname) =>
+        {
+            await LoadDataAsync();
+            await InvokeAsync(StateHasChanged);
+        });
+
+        await hubConnection.StartAsync();
+    }
+
+    private string GetCategoryBadgeClass(AuditCategory category) => category switch
+    {
+        AuditCategory.Deployment => "bg-primary",
+        AuditCategory.ImageCapture => "bg-info",
+        AuditCategory.PatchManagement => "bg-warning text-dark",
+        AuditCategory.Recovery => "bg-danger",
+        AuditCategory.ClientManagement => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}

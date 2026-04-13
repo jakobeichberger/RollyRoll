@@ -1,0 +1,57 @@
+@* Draggable client tile. Can be dragged onto groups. *@
+
+<div class="card-dark p-3" draggable="true" @ondragstart="OnDragStart" style="cursor: grab;">
+    <div class="d-flex justify-content-between align-items-start mb-2">
+        <div>
+            <i class="bi bi-pc-display me-1"></i>
+            <strong>@(string.IsNullOrEmpty(Client.Hostname) ? "(unknown)" : Client.Hostname)</strong>
+        </div>
+        @if (Client.IsOnline)
+        {
+            <span class="badge badge-online">Online</span>
+        }
+        else
+        {
+            <span class="badge badge-offline">Offline</span>
+        }
+    </div>
+
+    <div class="small text-muted mb-1">
+        <i class="bi bi-ethernet me-1"></i> <code>@Client.MacAddress</code>
+    </div>
+    <div class="small text-muted mb-1">
+        <i class="bi bi-globe me-1"></i> @Client.IpAddress
+    </div>
+
+    @if (!string.IsNullOrEmpty(Client.OsVersion))
+    {
+        <div class="small text-muted mb-1">
+            <i class="bi bi-windows me-1"></i> @Client.OsVersion
+        </div>
+    }
+
+    @if (Client.Group is not null)
+    {
+        <div class="small mt-1">
+            <span class="badge bg-secondary"><i class="bi bi-diagram-3 me-1"></i>@Client.Group.Name</span>
+        </div>
+    }
+
+    @if (!Client.IsApproved)
+    {
+        <div class="mt-1">
+            <span class="badge badge-queued">Pending Approval</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Client Client { get; set; } = default!;
+
+    private void OnDragStart()
+    {
+        // Use the static property from Clients page for cross-component communication
+        Clients.DraggedClient = Client;
+    }
+}

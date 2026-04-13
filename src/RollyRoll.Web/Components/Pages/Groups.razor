@@ -1,0 +1,219 @@
+@page "/groups"
+@inject IClientDiscoveryService ClientService
+@inject IImageService ImageService
+@using Microsoft.EntityFrameworkCore
+@inject RollyRoll.Infrastructure.Data.RollyRollDbContext DbContext
+
+<PageTitle>Groups - RollyRoll</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Groups</h1>
+    <button class="btn btn-accent" @onclick="ShowCreateDialog">
+        <i class="bi bi-plus-lg"></i> New Group
+    </button>
+</div>
+
+<p class="text-muted mb-3">Drag clients from the <a href="/clients" style="color: var(--rr-accent);">Clients</a> page and drop them onto a group card below.</p>
+
+<div class="row g-3">
+    @foreach (var group in groups)
+    {
+        <div class="col-md-6 col-lg-4">
+            <DragDropZone OnItemDropped="() => OnClientDroppedToGroup(group)" CssClass="h-100">
+                <div class="card-dark p-3 h-100">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h5 class="mb-0">@group.Name</h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-light" @onclick="() => EditGroup(group)">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteGroup(group)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-muted small mb-2">@group.Description</p>
+                    <div class="d-flex gap-2 mb-2">
+                        @if (group.DefaultImage is not null)
+                        {
+                            <span class="badge bg-info"><i class="bi bi-disc me-1"></i>@group.DefaultImage.Name</span>
+                        }
+                        @if (group.DefaultTemplate is not null)
+                        {
+                            <span class="badge bg-secondary"><i class="bi bi-file-earmark-code me-1"></i>@group.DefaultTemplate.Name</span>
+                        }
+                    </div>
+                    <div class="small">
+                        <strong>@group.Clients.Count</strong> client(s)
+                    </div>
+                    @if (group.Clients.Any())
+                    {
+                        <div class="mt-2">
+                            @foreach (var client in group.Clients.Take(5))
+                            {
+                                <span class="badge bg-secondary me-1 mb-1">
+                                    <i class="bi bi-pc-display me-1"></i>@(string.IsNullOrEmpty(client.Hostname) ? client.MacAddress : client.Hostname)
+                                </span>
+                            }
+                            @if (group.Clients.Count > 5)
+                            {
+                                <span class="badge bg-secondary">+@(group.Clients.Count - 5) more</span>
+                            }
+                        </div>
+                    }
+                </div>
+            </DragDropZone>
+        </div>
+    }
+</div>
+
+@* ── Create / Edit Dialog ── *@
+@if (showDialog)
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.6);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header border-bottom" style="border-color: var(--rr-border) !important;">
+                    <h5 class="modal-title">@(editingGroup is null ? "Create Group" : "Edit Group")</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-control" @bind="formName" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" rows="2" @bind="formDescription"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Default Image</label>
+                        <select class="form-select" @bind="formDefaultImageId">
+                            <option value="0">None</option>
+                            @foreach (var img in allImages)
+                            {
+                                <option value="@img.Id">@img.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Default Template</label>
+                        <select class="form-select" @bind="formDefaultTemplateId">
+                            <option value="0">None</option>
+                            @foreach (var tmpl in allTemplates)
+                            {
+                                <option value="@tmpl.Id">@tmpl.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--rr-border) !important;">
+                    <button class="btn btn-secondary" @onclick="CloseDialog">Cancel</button>
+                    <button class="btn btn-accent" @onclick="SaveGroup" disabled="@string.IsNullOrWhiteSpace(formName)">
+                        <i class="bi bi-check-lg"></i> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ClientGroup> groups = [];
+    private List<Image> allImages = [];
+    private List<DeploymentTemplate> allTemplates = [];
+
+    // Dialog state
+    private bool showDialog;
+    private ClientGroup? editingGroup;
+    private string formName = string.Empty;
+    private string formDescription = string.Empty;
+    private int formDefaultImageId;
+    private int formDefaultTemplateId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        groups = await DbContext.ClientGroups
+            .Include(g => g.Clients)
+            .Include(g => g.DefaultImage)
+            .Include(g => g.DefaultTemplate)
+            .ToListAsync();
+        allImages = await ImageService.GetAllImagesAsync();
+        allTemplates = await DbContext.DeploymentTemplates.ToListAsync();
+    }
+
+    private void ShowCreateDialog()
+    {
+        editingGroup = null;
+        formName = string.Empty;
+        formDescription = string.Empty;
+        formDefaultImageId = 0;
+        formDefaultTemplateId = 0;
+        showDialog = true;
+    }
+
+    private void EditGroup(ClientGroup group)
+    {
+        editingGroup = group;
+        formName = group.Name;
+        formDescription = group.Description;
+        formDefaultImageId = group.DefaultImageId ?? 0;
+        formDefaultTemplateId = group.DefaultTemplateId ?? 0;
+        showDialog = true;
+    }
+
+    private async Task SaveGroup()
+    {
+        if (string.IsNullOrWhiteSpace(formName)) return;
+
+        if (editingGroup is null)
+        {
+            var newGroup = new ClientGroup
+            {
+                Name = formName,
+                Description = formDescription,
+                DefaultImageId = formDefaultImageId > 0 ? formDefaultImageId : null,
+                DefaultTemplateId = formDefaultTemplateId > 0 ? formDefaultTemplateId : null
+            };
+            DbContext.ClientGroups.Add(newGroup);
+        }
+        else
+        {
+            editingGroup.Name = formName;
+            editingGroup.Description = formDescription;
+            editingGroup.DefaultImageId = formDefaultImageId > 0 ? formDefaultImageId : null;
+            editingGroup.DefaultTemplateId = formDefaultTemplateId > 0 ? formDefaultTemplateId : null;
+        }
+
+        await DbContext.SaveChangesAsync();
+        showDialog = false;
+        await LoadData();
+    }
+
+    private async Task DeleteGroup(ClientGroup group)
+    {
+        DbContext.ClientGroups.Remove(group);
+        await DbContext.SaveChangesAsync();
+        await LoadData();
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+    }
+
+    private async Task OnClientDroppedToGroup(ClientGroup group)
+    {
+        var draggedClient = Clients.DraggedClient;
+        if (draggedClient is not null)
+        {
+            await ClientService.MoveClientToGroupAsync(draggedClient.Id, group.Id);
+            await LoadData();
+        }
+    }
+}
