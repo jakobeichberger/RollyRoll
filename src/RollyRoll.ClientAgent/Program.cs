@@ -46,6 +46,7 @@ public class Program
                 services.AddSingleton<ProfileCapturer>();
 
                 // Register background workers
+                services.AddHostedService<WolConfigurator>();
                 services.AddHostedService<HealthReporter>();
                 services.AddHostedService<PatchInstaller>();
                 services.AddHostedService<RecoveryMonitor>();

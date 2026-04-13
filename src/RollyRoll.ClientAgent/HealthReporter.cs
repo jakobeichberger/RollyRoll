@@ -99,7 +99,8 @@ public class HealthReporter : BackgroundService
             IpAddress = ipAddress,
             OsVersion = osVersion,
             HardwareModel = hardwareModel,
-            IsOnline = true
+            IsOnline = true,
+            WolEnabled = IsWolEnabledOnPrimaryNic()
         };
 
         try
@@ -190,6 +191,37 @@ public class HealthReporter : BackgroundService
         catch
         {
             return "Unknown";
+        }
+    }
+
+    /// <summary>
+    /// Quick check if Wake-on-Magic-Packet is enabled on the primary NIC.
+    /// Reports this in the heartbeat so the server dashboard can show WoL readiness.
+    /// </summary>
+    private static bool IsWolEnabledOnPrimaryNic()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-NoProfile -NonInteractive -Command \"Get-NetAdapterPowerManagement | Select-Object -First 1 -ExpandProperty WakeOnMagicPacket\"",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process is null) return false;
+
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit();
+
+            return output.Equals("Enabled", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 }
