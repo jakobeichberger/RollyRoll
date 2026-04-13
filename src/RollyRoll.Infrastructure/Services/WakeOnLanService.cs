@@ -39,7 +39,7 @@ public class WakeOnLanService : IWakeOnLanService
     {
         var magicPacket = BuildMagicPacket(macAddress);
 
-        for (var attempt = 0; attempt <= _retryCount; attempt++)
+        for (var attempt = 0; attempt < _retryCount; attempt++)
         {
             try
             {
@@ -80,7 +80,7 @@ public class WakeOnLanService : IWakeOnLanService
         var magicPacket = BuildMagicPacket(macAddress);
         var broadcastIp = IPAddress.Parse(subnetBroadcastAddress);
 
-        for (var attempt = 0; attempt <= _retryCount; attempt++)
+        for (var attempt = 0; attempt < _retryCount; attempt++)
         {
             try
             {

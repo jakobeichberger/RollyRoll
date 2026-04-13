@@ -15,7 +15,7 @@ namespace RollyRoll.Infrastructure.Services;
 /// 2. DNS SRV record (_rollyroll._tcp) — cross-subnet, requires DNS admin setup.
 /// 3. Last-known server IP — fallback if broadcast and DNS both fail.
 /// </summary>
-public class AutoDiscoveryService : IAutoDiscoveryService
+public class AutoDiscoveryService : IAutoDiscoveryService, IDisposable
 {
     private readonly ILogger<AutoDiscoveryService> _logger;
 
@@ -414,5 +414,17 @@ public class AutoDiscoveryService : IAutoDiscoveryService
         {
             return null;
         }
+    }
+
+    public void Dispose()
+    {
+        _broadcastCts?.Cancel();
+        try { _broadcastTask?.Wait(TimeSpan.FromSeconds(2)); }
+        catch { /* best effort */ }
+        _broadcastListener?.Dispose();
+        _broadcastListener = null;
+        _broadcastCts?.Dispose();
+        _broadcastCts = null;
+        _broadcastTask = null;
     }
 }

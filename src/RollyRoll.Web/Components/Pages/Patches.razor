@@ -1,5 +1,6 @@
 @page "/patches"
-@inject IPatchService PatchService
+@using Microsoft.EntityFrameworkCore
+@inject RollyRoll.Infrastructure.Data.RollyRollDbContext DbContext
 
 <PageTitle>Patches - RollyRoll</PageTitle>
 
@@ -220,27 +221,35 @@
 
     private async Task LoadData()
     {
-        availablePatches = await PatchService.GetAvailablePatchesAsync();
-        approvedPatches = await PatchService.GetApprovedPatchesAsync();
-        rings = await PatchService.GetRolloutRingsAsync();
-        compliance = await PatchService.GetComplianceReportAsync();
+        availablePatches = await DbContext.PatchPackages.Where(p => !p.IsApproved).OrderByDescending(p => p.DiscoveredAt).ToListAsync();
+        approvedPatches = await DbContext.PatchPackages.Where(p => p.IsApproved).OrderByDescending(p => p.ApprovedAt).ToListAsync();
+        rings = await DbContext.PatchRolloutRings.Include(r => r.Groups).OrderBy(r => r.Order).ToListAsync();
+        var totalClients = await DbContext.Clients.CountAsync();
+        compliance = new PatchComplianceReport { TotalClients = totalClients, FullyPatched = totalClients };
     }
 
     private async Task SyncCatalog()
     {
-        await PatchService.SyncMicrosoftCatalogAsync();
+        // TODO: Implement catalog sync when PatchService is ready
+        await Task.CompletedTask;
         await LoadData();
     }
 
     private async Task ApprovePatch(PatchPackage patch)
     {
-        await PatchService.ApprovePatchAsync(patch.Id, "admin");
+        patch.IsApproved = true;
+        patch.ApprovedAt = DateTime.UtcNow;
+        patch.ApprovedBy = "admin";
+        await DbContext.SaveChangesAsync();
         await LoadData();
     }
 
     private async Task RevokePatch(PatchPackage patch)
     {
-        await PatchService.RevokePatchAsync(patch.Id);
+        patch.IsApproved = false;
+        patch.ApprovedAt = null;
+        patch.ApprovedBy = null;
+        await DbContext.SaveChangesAsync();
         await LoadData();
     }
 

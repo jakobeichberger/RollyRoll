@@ -52,8 +52,15 @@ public class TftpServer : IDisposable
         _cts?.Cancel();
         _listener?.Close();
         if (_listenTask != null)
-            await _listenTask;
+        {
+            try { await _listenTask; }
+            catch (OperationCanceledException) { /* expected */ }
+        }
+        _listener?.Dispose();
         _listener = null;
+        _cts?.Dispose();
+        _cts = null;
+        _listenTask = null;
         _logger.LogInformation("TFTP server stopped");
     }
 
@@ -123,7 +130,6 @@ public class TftpServer : IDisposable
 
         // Send file using a new UDP socket for this transfer
         using var transferSocket = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
-        transferSocket.Client.ReceiveTimeout = 5000;
 
         // Send OACK if options were negotiated
         if (options.Count > 0)
@@ -131,7 +137,12 @@ public class TftpServer : IDisposable
             var oack = BuildOackPacket(blockSize);
             await transferSocket.SendAsync(oack, oack.Length, remoteEp);
             // Wait for ACK of OACK (block 0)
-            try { await transferSocket.ReceiveAsync(ct); }
+            try
+            {
+                using var oackCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                oackCts.CancelAfter(5000);
+                await transferSocket.ReceiveAsync(oackCts.Token);
+            }
             catch { return; }
         }
 
@@ -152,10 +163,17 @@ public class TftpServer : IDisposable
                 await transferSocket.SendAsync(packet, packet.Length, remoteEp);
                 try
                 {
-                    var ack = await transferSocket.ReceiveAsync(ct);
+                    // Use CancellationToken timeout instead of Socket.ReceiveTimeout
+                    // (ReceiveTimeout only works with synchronous Receive, not async ReceiveAsync)
+                    using var ackCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    ackCts.CancelAfter(5000);
+                    var ack = await transferSocket.ReceiveAsync(ackCts.Token);
                     var ackBlock = (ushort)((ack.Buffer[2] << 8) | ack.Buffer[3]);
                     if (ackBlock == blockNum) break;
+                    // Wrong ACK block — count as a retry to avoid infinite loop
+                    retries++;
                 }
+                catch (OperationCanceledException) { retries++; } // Timeout
                 catch (SocketException) { retries++; }
             }
 

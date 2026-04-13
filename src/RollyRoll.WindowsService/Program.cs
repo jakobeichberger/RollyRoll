@@ -47,6 +47,7 @@ public class Program
                 var wolSection = configuration.GetSection("WolSettings");
                 var wolPort = wolSection.GetValue("Port", 9);
                 var wolRetries = wolSection.GetValue("Retries", 3);
+                var wolRetryDelayMs = wolSection.GetValue("RetryDelayMs", 500);
 
                 // Ensure directories exist
                 Directory.CreateDirectory(tftpRoot);
@@ -61,7 +62,8 @@ public class Program
                         sp.GetRequiredService<ILogger<WakeOnLanService>>(),
                         sp.GetRequiredService<RollyRollDbContext>(),
                         wolPort,
-                        wolRetries));
+                        wolRetries,
+                        wolRetryDelayMs));
 
                 services.AddScoped<IImageService>(sp =>
                     new DismImageService(

@@ -73,8 +73,15 @@ public class DhcpProxyService : IDisposable
         _cts?.Cancel();
         _listener?.Close();
         if (_listenTask != null)
-            await _listenTask;
+        {
+            try { await _listenTask; }
+            catch (OperationCanceledException) { /* expected */ }
+        }
+        _listener?.Dispose();
         _listener = null;
+        _cts?.Dispose();
+        _cts = null;
+        _listenTask = null;
         _logger.LogInformation("DHCP Proxy stopped");
     }
 
@@ -242,7 +249,13 @@ public class DhcpProxyService : IDisposable
     public void Dispose()
     {
         _cts?.Cancel();
+        // Give the listen loop a moment to exit before disposing resources
+        try { _listenTask?.Wait(TimeSpan.FromSeconds(2)); }
+        catch { /* best effort */ }
         _listener?.Dispose();
+        _listener = null;
         _cts?.Dispose();
+        _cts = null;
+        _listenTask = null;
     }
 }

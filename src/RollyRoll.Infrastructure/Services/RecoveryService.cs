@@ -79,22 +79,22 @@ public class RecoveryService : IRecoveryService
         }
         else
         {
-        try
-        {
-            profilesPath = await _profileService.CaptureProfilesAsync(client.MacAddress, ct);
-            profilesSizeBytes = await _profileService.GetProfilesSizeAsync(profilesPath, ct);
+            try
+            {
+                profilesPath = await _profileService.CaptureProfilesAsync(client.MacAddress, ct);
+                profilesSizeBytes = await _profileService.GetProfilesSizeAsync(profilesPath, ct);
 
-            _logger.LogInformation(
-                "User profiles captured for client {Hostname}: {Path} ({Size} bytes)",
-                client.Hostname, profilesPath, profilesSizeBytes);
+                _logger.LogInformation(
+                    "User profiles captured for client {Hostname}: {Path} ({Size} bytes)",
+                    client.Hostname, profilesPath, profilesSizeBytes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to capture user profiles for client {Hostname}. Snapshot will be created without profiles.",
+                    client.Hostname);
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "Failed to capture user profiles for client {Hostname}. Snapshot will be created without profiles.",
-                client.Hostname);
-        }
-        } // end if (_profileService is not null)
 
         var snapshot = new RecoverySnapshot
         {
@@ -221,6 +221,7 @@ public class RecoveryService : IRecoveryService
         }
 
         _db.RecoverySnapshots.RemoveRange(expiredSnapshots);
+        await _db.SaveChangesAsync(ct); // Persist deletions before the per-client query to avoid double-counting
 
         // Enforce per-client maximum: keep only the newest MaxSnapshotsPerClient per client
         var clientIds = await _db.RecoverySnapshots

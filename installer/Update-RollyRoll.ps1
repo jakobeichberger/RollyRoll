@@ -36,7 +36,7 @@ $serviceName = "RollyRoll"
 $binPath = "$InstallPath\bin"
 $backupPath = "$InstallPath\backups\$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 $dbPath = "$InstallPath\data\rollyroll.db"
-$healthUrl = "https://localhost/health"
+$healthUrl = "https://localhost/api/health"
 
 function Write-Step { param([string]$Message); Write-Host "`n=== $Message ===" -ForegroundColor Cyan }
 function Write-Success { param([string]$Message); Write-Host "  [OK] $Message" -ForegroundColor Green }

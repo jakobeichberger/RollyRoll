@@ -12,7 +12,6 @@
   <ItemGroup>
     <ProjectReference Include="..\RollyRoll.Core\RollyRoll.Core.csproj" />
     <ProjectReference Include="..\RollyRoll.Infrastructure\RollyRoll.Infrastructure.csproj" />
-    <ProjectReference Include="..\RollyRoll.Web\RollyRoll.Web.csproj" />
   </ItemGroup>
 
   <ItemGroup>

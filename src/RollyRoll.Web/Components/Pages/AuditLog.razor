@@ -1,5 +1,6 @@
 @page "/audit-log"
-@inject IAuditService AuditService
+@using Microsoft.EntityFrameworkCore
+@inject RollyRoll.Infrastructure.Data.RollyRollDbContext DbContext
 
 <PageTitle>Audit Log - RollyRoll</PageTitle>
 
@@ -141,19 +142,14 @@
 
         string? user = string.IsNullOrWhiteSpace(filterUser) ? null : filterUser.Trim();
 
-        entries = await AuditService.GetEntriesAsync(
-            category: category,
-            from: filterFrom,
-            to: filterTo?.AddDays(1),
-            performedBy: user,
-            skip: skip,
-            take: pageSize);
+        var query = DbContext.AuditLogEntries.AsQueryable();
+        if (category.HasValue) query = query.Where(e => e.Category == category.Value);
+        if (filterFrom.HasValue) query = query.Where(e => e.Timestamp >= filterFrom.Value);
+        if (filterTo.HasValue) query = query.Where(e => e.Timestamp < filterTo.Value.AddDays(1));
+        if (!string.IsNullOrEmpty(user)) query = query.Where(e => e.PerformedBy == user);
 
-        totalCount = await AuditService.GetCountAsync(
-            category: category,
-            from: filterFrom,
-            to: filterTo?.AddDays(1),
-            performedBy: user);
+        totalCount = await query.CountAsync();
+        entries = await query.OrderByDescending(e => e.Timestamp).Skip(skip).Take(pageSize).ToListAsync();
 
         isLoading = false;
     }
@@ -182,8 +178,8 @@
             ? null
             : Enum.Parse<AuditCategory>(filterCategory);
 
-        var csv = await AuditService.ExportCsvAsync(category, filterFrom, filterTo);
-        // In a real app this would trigger a file download via JS interop
+        // TODO: Implement CSV export when AuditService is ready
+        await Task.CompletedTask;
     }
 
     private static string GetCategoryBadge(AuditCategory category) => category switch

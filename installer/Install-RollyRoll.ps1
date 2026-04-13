@@ -58,7 +58,7 @@ function Write-Success {
     Write-Host "  [OK] $Message" -ForegroundColor Green
 }
 
-function Write-Warning {
+function Write-StepWarning {
     param([string]$Message)
     Write-Host "  [WARN] $Message" -ForegroundColor Yellow
 }
@@ -77,7 +77,7 @@ Write-Step "Checking prerequisites"
 # Check Windows Server
 $os = Get-CimInstance Win32_OperatingSystem
 if ($os.ProductType -ne 3 -and $os.ProductType -ne 2) {
-    Write-Warning "This is not a Windows Server OS. RollyRoll is designed for Windows Server but will attempt to install."
+    Write-StepWarning "This is not a Windows Server OS. RollyRoll is designed for Windows Server but will attempt to install."
 }
 
 $winVersion = [System.Environment]::OSVersion.Version
@@ -98,7 +98,7 @@ try {
     $null = Invoke-WebRequest -Uri "https://github.com" -UseBasicParsing -TimeoutSec 10
     Write-Success "Network connectivity OK"
 } catch {
-    Write-Warning "Cannot reach github.com. If installing from local files, this is OK."
+    Write-StepWarning "Cannot reach github.com. If installing from local files, this is OK."
 }
 
 # --------------------------------------------------
@@ -234,7 +234,7 @@ if (-not (Test-Path $certPath)) {
     $certPassword | ConvertFrom-SecureString | Set-Content "$InstallPath\certs\cert-password.enc"
 
     Write-Success "Self-signed certificate created: $certPath"
-    Write-Warning "For production, replace with a trusted certificate."
+    Write-StepWarning "For production, replace with a trusted certificate."
 } else {
     Write-Success "Certificate already exists: $certPath"
 }
@@ -263,7 +263,7 @@ $ipxeFiles = @("undionly.kpxe", "ipxe.efi", "ipxe32.efi")
 foreach ($file in $ipxeFiles) {
     $filePath = Join-Path $ipxeDir $file
     if (-not (Test-Path $filePath)) {
-        Write-Warning "iPXE binary missing: $file (download from ipxe.org or build from source)"
+        Write-StepWarning "iPXE binary missing: $file (download from ipxe.org or build from source)"
     } else {
         Write-Success "iPXE binary: $file"
     }
@@ -290,7 +290,7 @@ if ($existingService) {
             -StartupType Automatic | Out-Null
         Write-Success "Service '$serviceName' registered (auto-start)"
     } else {
-        Write-Warning "Service executable not found: $serviceExe"
+        Write-StepWarning "Service executable not found: $serviceExe"
         Write-Host "  Build the project first, then re-run the installer." -ForegroundColor Yellow
     }
 }
@@ -306,7 +306,7 @@ if (-not $SkipWinPE) {
     if (Test-Path $buildWinPeScript) {
         & $buildWinPeScript -OutputPath "$InstallPath\WinPE"
     } else {
-        Write-Warning "Build-WinPE.ps1 not found. Run it manually after installation."
+        Write-StepWarning "Build-WinPE.ps1 not found. Run it manually after installation."
     }
 } else {
     Write-Step "Skipping WinPE build (-SkipWinPE specified)"
@@ -320,18 +320,36 @@ Write-Step "Writing configuration"
 
 $configPath = "$InstallPath\bin\appsettings.json"
 if (-not (Test-Path $configPath)) {
+    $serverIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -ne "127.0.0.1" } | Select-Object -First 1).IPAddress
+    if (-not $serverIp) { $serverIp = "0.0.0.0" }
+
     $config = @{
         ConnectionStrings = @{
             DefaultConnection = "Data Source=$dbPath"
         }
+        PxeSettings = @{
+            TftpPort = 69
+            TftpRoot = $tftpRoot
+        }
+        ImageSettings = @{
+            StorePath = $ImageStorePath
+        }
+        NetworkSettings = @{
+            ServerIp = $serverIp
+            ServerBaseUrl = "https://$($env:COMPUTERNAME):443"
+        }
+        WolSettings = @{
+            Port = 9
+            Retries = 3
+            RetryDelayMs = 500
+        }
         RollyRoll = @{
             ImageStorePath = $ImageStorePath
-            TftpRoot = $tftpRoot
+            TftpServerIp = $serverIp
+            ServerBaseUrl = "https://$($env:COMPUTERNAME):443"
+            MasterEncryptionKey = "RollyRoll-$(Get-Random -Maximum 999999999)"
             CertificatePath = $certPath
             ProfilesPath = "$InstallPath\profiles"
-            LogsPath = "$InstallPath\logs"
-            ServerPort = 443
-            ApiPort = 8080
         }
         Logging = @{
             LogLevel = @{
@@ -359,7 +377,7 @@ if ($service -and $service.Status -ne "Running") {
         Start-Service -Name $serviceName
         Write-Success "Service started"
     } catch {
-        Write-Warning "Could not start service: $_"
+        Write-StepWarning "Could not start service: $_"
         Write-Host "  Ensure binaries are built and try: Start-Service $serviceName" -ForegroundColor Yellow
     }
 }

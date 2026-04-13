@@ -1,7 +1,7 @@
 @page "/schedule"
-@inject ISchedulerService SchedulerService
 @inject IClientDiscoveryService ClientService
 @inject IImageService ImageService
+@inject IDeploymentService DeploymentService
 @using Microsoft.EntityFrameworkCore
 @inject RollyRoll.Infrastructure.Data.RollyRollDbContext DbContext
 
@@ -228,8 +228,14 @@
 
     private async Task LoadData()
     {
-        allScheduled = await SchedulerService.GetScheduledTasksAsync();
-        tasksThisWeek = await SchedulerService.GetTasksInRangeAsync(weekStart, weekEnd.AddDays(1));
+        allScheduled = await DbContext.ScheduledTasks
+            .Include(t => t.Client).Include(t => t.Group).Include(t => t.Image)
+            .Where(t => t.ScheduledAt != null)
+            .OrderBy(t => t.ScheduledAt)
+            .ToListAsync();
+        tasksThisWeek = allScheduled
+            .Where(t => t.ScheduledAt >= weekStart && t.ScheduledAt <= weekEnd.AddDays(1))
+            .ToList();
         allClients = await ClientService.GetAllClientsAsync();
         allGroups = await DbContext.ClientGroups.ToListAsync();
         allImages = await ImageService.GetAllImagesAsync();
@@ -265,14 +271,10 @@
     {
         newTask.ScheduledAt = scheduledDateTime;
 
-        if (!string.IsNullOrEmpty(newTask.CronExpression))
-        {
-            await SchedulerService.ScheduleRecurringTaskAsync(newTask, newTask.CronExpression);
-        }
-        else
-        {
-            await SchedulerService.ScheduleTaskAsync(newTask);
-        }
+        newTask.Status = DeploymentTaskStatus.Scheduled;
+        newTask.CreatedAt = DateTime.UtcNow;
+        DbContext.ScheduledTasks.Add(newTask);
+        await DbContext.SaveChangesAsync();
 
         showCreate = false;
         await LoadData();
@@ -280,7 +282,7 @@
 
     private async Task CancelTask(ScheduledTask task)
     {
-        await SchedulerService.CancelTaskAsync(task.Id);
+        await DeploymentService.CancelDeploymentAsync(task.Id);
         await LoadData();
     }
 

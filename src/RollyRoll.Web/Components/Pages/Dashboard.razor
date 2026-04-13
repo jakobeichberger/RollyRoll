@@ -1,8 +1,6 @@
 @page "/"
 @inject IClientDiscoveryService ClientService
 @inject IDeploymentService DeploymentService
-@inject IPatchService PatchService
-@inject IAuditService AuditService
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
@@ -112,10 +110,9 @@
 
         activeDeployments = await DeploymentService.GetActiveDeploymentsAsync();
 
-        var compliance = await PatchService.GetComplianceReportAsync();
-        compliancePercent = compliance.CompliancePercent;
-
-        recentEntries = await AuditService.GetEntriesAsync(take: 10);
+        // PatchService and AuditService are not yet implemented — use safe defaults
+        compliancePercent = 0;
+        recentEntries = [];
     }
 
     private async Task StartSignalRAsync()

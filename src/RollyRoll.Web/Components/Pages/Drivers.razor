@@ -1,5 +1,4 @@
 @page "/drivers"
-@inject IPatchService PatchService
 @using Microsoft.EntityFrameworkCore
 @inject RollyRoll.Infrastructure.Data.RollyRollDbContext DbContext
 
@@ -208,9 +207,25 @@
     {
         if (uploadFile is null || string.IsNullOrWhiteSpace(uploadTitle)) return;
 
+        // Save the uploaded driver as a PatchPackage with Source=Driver
+        var driver = new PatchPackage
+        {
+            Title = uploadTitle,
+            Version = uploadVersion,
+            Source = PatchSource.Driver,
+            Classification = PatchClassification.DriverUpdate,
+            SilentInstallArgs = uploadSilentArgs,
+            InstallerPath = Path.Combine(AppContext.BaseDirectory, "Drivers", uploadFile.Name),
+            DiscoveredAt = DateTime.UtcNow,
+            Severity = PatchSeverity.Moderate
+        };
+        Directory.CreateDirectory(Path.GetDirectoryName(driver.InstallerPath)!);
         using var stream = uploadFile.OpenReadStream(maxAllowedSize: 500 * 1024 * 1024);
-        await PatchService.UploadThirdPartyPatchAsync(
-            uploadTitle, uploadVersion, stream, uploadFile.Name, uploadSilentArgs);
+        await using var fs = new FileStream(driver.InstallerPath, FileMode.Create);
+        await stream.CopyToAsync(fs);
+        driver.SizeBytes = fs.Length;
+        DbContext.PatchPackages.Add(driver);
+        await DbContext.SaveChangesAsync();
 
         showUpload = false;
         await LoadDrivers();
@@ -218,14 +233,18 @@
 
     private async Task ApproveDriver(PatchPackage driver)
     {
-        await PatchService.ApprovePatchAsync(driver.Id, "admin");
         driver.IsApproved = true;
+        driver.ApprovedAt = DateTime.UtcNow;
+        driver.ApprovedBy = "admin";
+        await DbContext.SaveChangesAsync();
     }
 
     private async Task RevokeDriver(PatchPackage driver)
     {
-        await PatchService.RevokePatchAsync(driver.Id);
         driver.IsApproved = false;
+        driver.ApprovedAt = null;
+        driver.ApprovedBy = null;
+        await DbContext.SaveChangesAsync();
     }
 
     private static string GetSeverityBadge(PatchSeverity severity) => severity switch
