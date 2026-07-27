@@ -1,0 +1,213 @@
+---
+# Hardware-Protokolle.
+#
+# Die Metriken in 10-hardware.yml und 60-leistung.yml sagen, DASS etwas
+# nicht stimmt. Die Protokolle sagen, WAS genau Windows gemeldet hat – und
+# manche Befunde stehen ueberhaupt nur im Protokoll, weil es dafuer keinen
+# Zaehler gibt.
+#
+# Datenquelle: {job="windows_events", channel="Hardware"}. Dieser Kanal
+# wird nach ANBIETER gefuellt, nicht nach Schweregrad – korrigierte
+# WHEA-Fehler protokolliert Windows naemlich als "Information", und genau
+# die sind die frueheste Vorwarnung, die es gibt.
+groups:
+
+  # ================================================================== #
+  # Datentraeger und Controller
+  # ================================================================== #
+  - name: hardware-datentraeger-protokoll
+    interval: 2m
+    rules:
+
+      - alert: ControllerSetztGeraetZurueck
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |~ "(?i)\"event_id\":129|zuruecksetzen des ger|reset to device" [30m])
+          ) > 2
+        labels: { severity: critical, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "Speichercontroller auf {{ $labels.geraet }} setzt Geraete zurueck"
+          description: >-
+            Ereignis 129 bedeutet: Der Controller hat auf eine Anfrage keine
+            Antwort bekommen und das Laufwerk neu gestartet. Haeuft sich das,
+            geht es einem Plattenausfall meist um Tage voraus.
+            Verkabelung, Firmware und S.M.A.R.T.-Werte pruefen.
+
+      - alert: FehlerhafterBlock
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |~ "(?i)\"event_id\":(7|51|55|98|140|153)\\b" [1h])
+          ) > 0
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Datentraegerfehler auf {{ $labels.geraet }}"
+          description: >-
+            Windows meldet einen fehlerhaften Block oder einen abgebrochenen
+            Zugriff. Datensicherung pruefen und den Datentraeger auf der
+            Austauschliste vormerken.
+
+      - alert: DateisystemBeschaedigt
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |~ "(?i)dateisystemstruktur|file system structure|corrupt" [1h])
+          ) > 0
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Beschaedigtes Dateisystem auf {{ $labels.geraet }}"
+          description: >-
+            NTFS meldet eine beschaedigte Struktur. chkdsk im Wartungsfenster
+            einplanen – und vorher sichern, nicht nachher.
+
+  # ================================================================== #
+  # Arbeitsspeicher, CPU und PCIe
+  # ================================================================== #
+  - name: hardware-whea-protokoll
+    interval: 2m
+    rules:
+
+      - alert: WheaKorrigierterFehler
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |= "WHEA" |~ "(?i)korrigiert|corrected" [6h])
+          ) > 0
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "Korrigierte Hardwarefehler auf {{ $labels.geraet }}"
+          description: >-
+            Noch faengt die Fehlerkorrektur alles ab – aber korrigierte
+            Fehler treten nicht ohne Grund auf. Bei Arbeitsspeicher hilft
+            der Blick auf die Steckplaetze im Dashboard: Meldet immer
+            derselbe Riegel, ist der Fall klar.
+
+      - alert: WheaUnkorrigierbarerFehler
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |= "WHEA" |~ "(?i)nicht behebbar|uncorrectable|fatal" [1h])
+          ) > 0
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Unkorrigierbarer Hardwarefehler auf {{ $labels.geraet }}"
+          description: >-
+            CPU, Arbeitsspeicher oder eine PCIe-Karte haben einen Fehler
+            gemeldet, den die Korrektur nicht mehr auffangen konnte. Das
+            Geraet aus dem produktiven Betrieb nehmen und pruefen.
+
+      - alert: WheaHaeufung
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"} |= "WHEA" [24h])
+          ) > 20
+        labels: { severity: critical, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} WHEA-Meldungen auf {{ $labels.geraet }} in 24 Stunden"
+          description: >-
+            Eine solche Haeufung ist auch dann ernst, wenn alle Fehler
+            korrigiert wurden. Erfahrungsgemaess folgt der Totalausfall
+            innerhalb weniger Wochen.
+
+  # ================================================================== #
+  # Abstuerze und Strom
+  # ================================================================== #
+  - name: hardware-abstuerze
+    interval: 2m
+    rules:
+
+      - alert: Bluescreen
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |~ "(?i)\"event_id\":1001" |~ "(?i)bugcheck|bluescreen" [1h])
+          ) > 0
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "{{ $labels.geraet }} hatte einen Bluescreen"
+          description: >-
+            Der Stoppcode steht im Protokolleintrag. Wiederholt sich derselbe
+            Code, ist es fast immer Arbeitsspeicher oder ein Treiber.
+
+      - alert: UnerwarteterStromausfall
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |~ "(?i)\"event_id\":41" [1h])
+          ) > 0
+        labels: { severity: warning, kategorie: hardware }
+        annotations:
+          summary: "{{ $labels.geraet }} wurde nicht ordnungsgemaess heruntergefahren"
+          description: >-
+            Kernel-Power 41: Strom weg, Netzteil defekt oder das System ist
+            hart abgestuerzt. Bei Servern zusaetzlich die USV pruefen.
+
+      - alert: HaeufigeAbstuerze
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |~ "(?i)\"event_id\":(41|1001)" [7d])
+          ) > 3
+        labels: { severity: critical, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $labels.geraet }} ist diese Woche {{ $value | printf \"%.0f\" }} mal abgestuerzt"
+          description: >-
+            Ein Einzelfall kann Zufall sein, eine Haeufung nicht. Das Geraet
+            gehoert geprueft, bevor es jemanden mitten im Unterricht
+            erwischt.
+
+  # ================================================================== #
+  # Meldungen der Hersteller-Verwaltungsprogramme
+  # ================================================================== #
+  - name: hardware-hersteller
+    interval: 5m
+    rules:
+
+      - alert: HerstellerMeldetDefekt
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |~ "(?i)(failure|failed|degraded|predictive|ausgefallen|defekt|redundanz)" [1h])
+          ) > 0
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Hardwaredefekt auf {{ $labels.geraet }} gemeldet"
+          description: >-
+            Das Verwaltungsprogramm des Herstellers meldet einen Defekt oder
+            eine Ausfallvorhersage. Der Klartext steht im Dashboard
+            "Hardware-Leistung & Protokolle".
+
+      - alert: RedundanzVerloren
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Hardware"}
+              |~ "(?i)redundancy (is )?(lost|degraded)|redundanz.*(verloren|beeintr)" [1h])
+          ) > 0
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Redundanz auf {{ $labels.geraet }} nicht mehr gegeben"
+          description: >-
+            Ein Netzteil, ein Luefter oder eine Platte im Verbund ist
+            ausgefallen. Das System laeuft noch – aber der naechste Ausfall
+            legt es still.
+
+  # ================================================================== #
+  # Fliesst ueberhaupt noch etwas?
+  # ================================================================== #
+  - name: hardware-protokollfluss
+    interval: 10m
+    rules:
+
+      - alert: KeineHardwareProtokolleMehr
+        expr: |
+          sum(count_over_time({job="windows_events", channel="Hardware"}[24h])) < 1
+        for: 2h
+        labels: { severity: warning, kategorie: monitoring }
+        annotations:
+          summary: "Seit 24 Stunden kein einziger Hardware-Protokolleintrag"
+          description: >-
+            Ein voellig stiller Hardware-Kanal ist ungewoehnlich: Selbst im
+            Normalbetrieb protokollieren Windows-Geraete regelmaessig Start-
+            und Stromereignisse. Vermutlich sammelt Alloy den Kanal nicht
+            mehr ein – auf einem Geraet nachsehen.

@@ -142,6 +142,7 @@ Die Regeln liegen in `/opt/schulmonitoring/stack/prometheus/rules/`:
 | `30-windows.yml` | Dienste, Sicherheitshygiene, Sicherung, Hyper-V |
 | `40-netzwerk.yml` | SNMP, UniFi, FortiGate |
 | `50-sicherheits-baseline.yml` | Abweichungen von der Grundhärtung |
+| `60-leistung.yml` | Leistungs- und Fehlerdaten der Hardware |
 
 Eine eigene Regel, zum Beispiel für den Server der Schulverwaltung:
 

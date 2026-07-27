@@ -1,0 +1,298 @@
+---
+# Leistungsdaten und Fehlerzaehler der Hardware.
+#
+# Der Unterschied zu 10-hardware.yml: Dort geht es um Bauteile, die einen
+# Defekt MELDEN. Hier geht es um Bauteile, die noch funktionieren, aber
+# messbar langsamer oder fehlerhafter werden. Das ist meist der frueheste
+# Zeitpunkt, zu dem ueberhaupt etwas auffaellt.
+groups:
+
+  # ================================================================== #
+  # Vorberechnete Leistungswerte
+  # ================================================================== #
+  - name: leistung-aggregation
+    interval: 30s
+    rules:
+
+      # Antwortzeit je Lesevorgang. Der Nenner wird mit "> 0" abgesichert,
+      # sonst entsteht bei unbenutzten Laufwerken eine Division durch null.
+      - record: schule:datentraeger_latenz_lesen:sekunden
+        expr: |
+          rate(windows_logical_disk_read_seconds_total[5m])
+          / (rate(windows_logical_disk_reads_total[5m]) > 0)
+
+      - record: schule:datentraeger_latenz_schreiben:sekunden
+        expr: |
+          rate(windows_logical_disk_write_seconds_total[5m])
+          / (rate(windows_logical_disk_writes_total[5m]) > 0)
+
+      - record: schule:datentraeger_iops:gesamt
+        expr: |
+          rate(windows_logical_disk_reads_total[5m])
+          + rate(windows_logical_disk_writes_total[5m])
+
+      - record: schule:datentraeger_durchsatz:bytes_pro_sekunde
+        expr: |
+          rate(windows_logical_disk_read_bytes_total[5m])
+          + rate(windows_logical_disk_write_bytes_total[5m])
+
+      - record: schule:netzwerkkarte_fehler:pro_sekunde
+        expr: |
+          rate(windows_net_packets_received_errors_total[5m])
+          + rate(windows_net_packets_outbound_errors_total[5m])
+
+      - record: schule:netzwerkkarte_verworfen:pro_sekunde
+        expr: |
+          rate(windows_net_packets_received_discarded_total[5m])
+          + rate(windows_net_packets_outbound_discarded_total[5m])
+
+      - record: schule:speicher_zusage:anteil
+        expr: |
+          windows_memory_committed_bytes / (windows_memory_commit_limit > 0)
+
+  # ================================================================== #
+  # Datentraeger-Leistung
+  # ================================================================== #
+  - name: leistung-datentraeger
+    rules:
+
+      - alert: DatentraegerAntwortzeitHoch
+        expr: |
+          (schule:datentraeger_latenz_lesen:sekunden > 0.025
+           or schule:datentraeger_latenz_schreiben:sekunden > 0.025)
+          and on (geraet, volume) schule:datentraeger_iops:gesamt > 5
+        for: 20m
+        labels: { severity: warning, kategorie: leistung, vorwarnung: "ja" }
+        annotations:
+          summary: "Laufwerk {{ $labels.volume }} auf {{ $labels.geraet }} antwortet in {{ $value | humanizeDuration }}"
+          description: >-
+            Ueber 25 ms je Zugriff bei nennenswerter Last. Entweder ist der
+            Datentraeger ueberlastet oder er faengt an zu altern. Bei einer
+            SSD ist das ein deutliches Alterungszeichen.
+
+      - alert: DatentraegerAntwortzeitKritisch
+        expr: |
+          (schule:datentraeger_latenz_lesen:sekunden > 0.1
+           or schule:datentraeger_latenz_schreiben:sekunden > 0.1)
+          and on (geraet, volume) schule:datentraeger_iops:gesamt > 1
+        for: 10m
+        labels: { severity: critical, kategorie: leistung }
+        annotations:
+          summary: "Laufwerk {{ $labels.volume }} auf {{ $labels.geraet }} braucht {{ $value | humanizeDuration }} je Zugriff"
+          description: >-
+            Bei solchen Antwortzeiten steht das System fuer die Benutzer
+            praktisch. Haeufigste Ursachen: sterbende Platte, defekter
+            RAID-Verbund im Wiederaufbau oder ein Virenscan zur Unzeit.
+
+      - alert: DatentraegerSpitzenlatenzHoch
+        expr: schule_datentraeger_spitzenlatenz_sekunden > 1
+        for: 30m
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $labels.modell }} in {{ $labels.geraet }} meldet {{ $value | humanizeDuration }} Spitzenlatenz"
+          description: >-
+            Das Laufwerk selbst meldet, dass einzelne Zugriffe ueber eine
+            Sekunde gebraucht haben ({{ $labels.vorgang }}). Das passiert,
+            wenn intern Sektoren umgelagert werden – ein Alterungszeichen
+            lange vor der S.M.A.R.T.-Warnung.
+
+      - alert: DatentraegerKorrigierteFehlerSteigen
+        expr: increase(schule_datentraeger_korrigierte_fehler[6h]) > 100
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $labels.modell }} in {{ $labels.geraet }} korrigiert zunehmend Lesefehler"
+          description: >-
+            {{ $value | printf "%.0f" }} korrigierte Fehler in sechs Stunden.
+            Das Laufwerk faengt die Fehler noch selbst ab – aber die Zahl
+            steigt nur, wenn die Oberflaeche schlechter wird. Ersatz einplanen
+            und Datensicherung pruefen.
+
+      - alert: DatentraegerSchreibfehler
+        expr: increase(schule_datentraeger_schreibfehler[1h]) > 0
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Nicht korrigierbare Schreibfehler auf {{ $labels.geraet }}"
+          description: >-
+            {{ $labels.modell }} konnte Daten nicht schreiben. Anders als ein
+            Lesefehler bedeutet das unmittelbaren Datenverlust. Sofort
+            handeln.
+
+      - alert: DatentraegerLesefehler
+        expr: increase(schule_datentraeger_lesefehler[6h]) > 0
+        labels: { severity: warning, kategorie: hardware }
+        annotations:
+          summary: "Nicht korrigierbare Lesefehler auf {{ $labels.geraet }}"
+          description: "{{ $labels.modell }} konnte Daten nicht mehr lesen. Datensicherung pruefen."
+
+  # ================================================================== #
+  # System-Leistung
+  # ================================================================== #
+  - name: leistung-system
+    rules:
+
+      - alert: ProzessorWarteschlangeLang
+        expr: windows_system_processor_queue_length > 10
+        for: 30m
+        labels: { severity: warning, kategorie: leistung }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} Vorgaenge warten auf die CPU von {{ $labels.geraet }}"
+          description: >-
+            Anders als eine hohe CPU-Auslastung zeigt eine lange
+            Warteschlange, dass die Benutzer tatsaechlich warten.
+
+      - alert: SpeicherZusageHoch
+        expr: schule:speicher_zusage:anteil > 0.9
+        for: 20m
+        labels: { severity: warning, kategorie: leistung, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $labels.geraet }} hat {{ $value | humanizePercentage }} des Speichers zugesagt"
+          description: >-
+            Ist die Zusage aufgebraucht, verweigern Programme den Start –
+            und zwar bevor der Arbeitsspeicher wirklich voll ist.
+            Auslagerungsdatei oder RAM vergroessern.
+
+      - alert: DauerhafteAuslagerung
+        expr: rate(windows_memory_cache_faults_total[10m]) > 10000
+        for: 30m
+        labels: { severity: warning, kategorie: leistung }
+        annotations:
+          summary: "{{ $labels.geraet }} lagert dauerhaft aus"
+          description: >-
+            Das System holt sehr viel von der Platte nach, statt es im
+            Arbeitsspeicher zu halten. Das bremst spuerbar und belastet
+            zusaetzlich den Datentraeger.
+
+  # ================================================================== #
+  # Netzwerkkarten
+  # ================================================================== #
+  - name: leistung-netzwerkkarte
+    rules:
+
+      - alert: NetzwerkkarteFehler
+        expr: schule:netzwerkkarte_fehler:pro_sekunde > 1
+        for: 20m
+        labels: { severity: warning, kategorie: netzwerk, vorwarnung: "ja" }
+        annotations:
+          summary: "Uebertragungsfehler an {{ $labels.nic }} auf {{ $labels.geraet }}"
+          description: >-
+            {{ $value | printf "%.1f" }} Fehler/s. Fast immer ein defektes
+            Kabel, eine schlechte Steckverbindung oder ein sterbendes
+            SFP-Modul – selten die Karte selbst.
+
+      - alert: NetzwerkkarteVerwirftPakete
+        expr: schule:netzwerkkarte_verworfen:pro_sekunde > 20
+        for: 20m
+        labels: { severity: warning, kategorie: netzwerk }
+        annotations:
+          summary: "Paketverluste an {{ $labels.nic }} auf {{ $labels.geraet }}"
+          description: "Meist Ueberlastung des Anschlusses oder zu kleine Puffer."
+
+      # Bewusst der Vergleich mit gestern statt ein fester Schwellwert:
+      # Manche Geraete in der Schule haengen zu Recht an 100 Mbit. Ein
+      # ABFALL gegenueber gestern ist dagegen immer ein Befund.
+      - alert: NetzwerkkarteLangsamerGeworden
+        expr: |
+          schule_netzwerkkarte_geschwindigkeit_bit
+            < schule_netzwerkkarte_geschwindigkeit_bit offset 1d
+        for: 30m
+        labels: { severity: warning, kategorie: netzwerk, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $labels.karte }} auf {{ $labels.geraet }} handelt nur noch {{ $value | humanize }}bit/s aus"
+          description: >-
+            Gestern war die Verbindung schneller. Ein Rueckfall von Gigabit
+            auf 100 Mbit ist praktisch immer ein Kabel- oder Steckproblem
+            und faellt sonst nur als "das Netz ist langsam" auf.
+
+      - alert: TcpUebertragungswiederholungen
+        expr: |
+          rate(windows_tcp_segments_retransmitted_total[10m])
+          / (rate(windows_tcp_segments_sent_total[10m]) > 0) > 0.02
+        for: 30m
+        labels: { severity: warning, kategorie: netzwerk }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} der TCP-Pakete von {{ $labels.geraet }} muessen wiederholt werden"
+          description: >-
+            Ueber zwei Prozent Wiederholungen deuten auf Paketverluste im
+            Netzweg hin – Verkabelung, ueberlasteter Uplink oder ein
+            Duplex-Problem.
+
+  # ================================================================== #
+  # Fehlerdaten aus den Hardware-Protokollen
+  # ================================================================== #
+  - name: leistung-hardwarefehler
+    rules:
+
+      - alert: SpeichercontrollerFehler
+        expr: schule_hardware_fehler_24h{quelle="Speichercontroller"} > 0
+        labels: { severity: critical, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "Speichercontroller auf {{ $labels.geraet }} meldet Fehler"
+          description: >-
+            Ruecksetzungen des Controllers (typisch: Ereignis 129) gehen
+            einem Plattenausfall haeufig Tage voraus. Verkabelung, Firmware
+            und S.M.A.R.T.-Werte pruefen.
+
+      - alert: DateisystemFehler
+        expr: schule_hardware_fehler_24h{quelle="Dateisystem"} > 0
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Dateisystemfehler auf {{ $labels.geraet }}"
+          description: >-
+            NTFS meldet Beschaedigungen. Datensicherung pruefen und chkdsk
+            im Wartungsfenster einplanen.
+
+      - alert: HardwarefehlerVomHersteller
+        expr: schule_hardware_fehler_24h{quelle="Hersteller"} > 0
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Verwaltungsprogramm meldet Hardwarefehler auf {{ $labels.geraet }}"
+          description: >-
+            Dell OpenManage, HPE Smart Storage oder MegaRAID melden einen
+            Defekt – meist Platte, Netzteil oder Luefter. Im Dashboard
+            "Hardware-Leistung & Protokolle" steht der Klartext.
+
+      - alert: HaeufigeHardwareereignisse
+        expr: schule_hardware_ereignisse_24h{quelle!~"Strom|Hersteller"} > 50
+        for: 1h
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} Eintraege im Bereich {{ $labels.quelle }} auf {{ $labels.geraet }}"
+          description: >-
+            Auch ohne Fehlerstufe ist eine solche Haeufung auffaellig.
+            Im Protokoll nachsehen, was sich da wiederholt.
+
+  # ================================================================== #
+  # Linux-Server und die Monitoring-VM selbst
+  # ================================================================== #
+  - name: leistung-linux
+    rules:
+
+      - alert: LinuxDatentraegerAusgelastet
+        expr: |
+          rate(node_disk_io_time_seconds_total[5m]) > 0.9
+        for: 30m
+        labels: { severity: warning, kategorie: leistung }
+        annotations:
+          summary: "Datentraeger {{ $labels.device }} auf {{ $labels.geraet }} dauerhaft ausgelastet"
+          description: "Der Datentraeger ist zu {{ $value | humanizePercentage }} der Zeit beschaeftigt."
+
+      - alert: LinuxDatentraegerAntwortzeitHoch
+        expr: |
+          rate(node_disk_io_time_weighted_seconds_total[5m])
+          / (rate(node_disk_reads_completed_total[5m])
+             + rate(node_disk_writes_completed_total[5m]) > 0) > 0.05
+        for: 20m
+        labels: { severity: warning, kategorie: leistung, vorwarnung: "ja" }
+        annotations:
+          summary: "Hohe Antwortzeit von {{ $labels.device }} auf {{ $labels.geraet }}"
+          description: "{{ $value | humanizeDuration }} je Zugriff."
+
+      - alert: LinuxNetzwerkfehler
+        expr: |
+          rate(node_network_receive_errs_total[10m])
+          + rate(node_network_transmit_errs_total[10m]) > 1
+        for: 20m
+        labels: { severity: warning, kategorie: netzwerk }
+        annotations:
+          summary: "Uebertragungsfehler an {{ $labels.device }} auf {{ $labels.geraet }}"
+          description: "{{ $value | printf \"%.1f\" }} Fehler/s – Verkabelung pruefen."

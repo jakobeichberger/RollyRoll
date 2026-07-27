@@ -65,7 +65,7 @@ $ProgressPreference = 'SilentlyContinue'
 # ===================================================================== #
 # Konstanten
 # ===================================================================== #
-$AgentVersion   = '1.1.0'
+$AgentVersion   = '1.2.0'
 $BasisPfad      = "$env:ProgramData\SchulMonitoring"
 $TextdateiPfad  = "$BasisPfad\textfile"
 $ProtokollPfad  = "$BasisPfad\logs"

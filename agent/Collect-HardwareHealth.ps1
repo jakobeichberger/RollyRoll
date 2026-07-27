@@ -160,6 +160,35 @@ Invoke-Abschnitt 'datentraeger' {
                     -Wert ([double]$zaehler.ReadErrorsUncorrected) -Labels $labels `
                     -Hilfe 'Nicht korrigierbare Lesefehler' -Typ counter
             }
+            if ($null -ne $zaehler.WriteErrorsUncorrected) {
+                Add-Metrik -Name 'schule_datentraeger_schreibfehler' `
+                    -Wert ([double]$zaehler.WriteErrorsUncorrected) -Labels $labels `
+                    -Hilfe 'Nicht korrigierbare Schreibfehler' -Typ counter
+            }
+            if ($null -ne $zaehler.ReadErrorsCorrected) {
+                # Korrigierte Fehler sind kein Ausfall – aber ihre Zunahme ist
+                # der frueheste messbare Hinweis auf eine kippende Platte.
+                Add-Metrik -Name 'schule_datentraeger_korrigierte_fehler' `
+                    -Wert ([double]$zaehler.ReadErrorsCorrected) -Labels $labels `
+                    -Hilfe 'Vom Laufwerk selbst korrigierte Lesefehler' -Typ counter
+            }
+
+            # Die vom Laufwerk gemeldeten Spitzenlatenzen. Steigen sie ueber
+            # Wochen an, ist das ein Alterungszeichen, lange bevor S.M.A.R.T.
+            # Alarm schlaegt.
+            foreach ($messwert in @(
+                @{ Feld = 'ReadLatencyMax';  Name = 'lesen' }
+                @{ Feld = 'WriteLatencyMax'; Name = 'schreiben' }
+                @{ Feld = 'FlushLatencyMax'; Name = 'leeren' }
+            )) {
+                $wert = $zaehler.($messwert.Feld)
+                if ($null -ne $wert -and $wert -gt 0) {
+                    Add-Metrik -Name 'schule_datentraeger_spitzenlatenz_sekunden' `
+                        -Wert ([double]$wert / 1000) `
+                        -Labels ($labels + @{ vorgang = $messwert.Name }) `
+                        -Hilfe 'Groesste vom Laufwerk gemeldete Latenz je Vorgang'
+                }
+            }
         }
     }
 
@@ -261,40 +290,68 @@ Invoke-Abschnitt 'ereignisse' {
 
     $seit = (Get-Date).AddHours(-24)
 
-    # WHEA meldet Fehler von CPU, Arbeitsspeicher und PCIe. Auch die als
-    # "korrigiert" gemeldeten Faelle sind ein ernstes Vorzeichen.
-    $whea = Get-WinEvent -FilterHashtable @{
-        LogName      = 'System'
-        ProviderName = 'Microsoft-Windows-WHEA-Logger'
-        StartTime    = $seit
-    } -ErrorAction SilentlyContinue
+    # Anbieter zu Bereichen zusammengefasst. Wer den Bereich kennt, weiss
+    # sofort, wo er suchen muss – "Speichercontroller" ist eine andere
+    # Baustelle als "Dateisystem", auch wenn beide nach Plattenproblem
+    # aussehen.
+    $bereiche = @(
+        @{ Quelle = 'WHEA'
+           Anbieter = @('Microsoft-Windows-WHEA-Logger') }
+        @{ Quelle = 'Datentraeger'
+           Anbieter = @('disk', 'Disk', 'EhStorClass') }
+        @{ Quelle = 'Speichercontroller'
+           Anbieter = @('storahci', 'stornvme', 'iaStorA', 'megasas', 'megasas2',
+                        'HpCISSs3', 'mpio', 'msiscsi', 'Microsoft-Windows-StorPort') }
+        @{ Quelle = 'Dateisystem'
+           Anbieter = @('Ntfs', 'Microsoft-Windows-Ntfs', 'volmgr', 'volsnap') }
+        @{ Quelle = 'Strom'
+           Anbieter = @('Microsoft-Windows-Kernel-Power', 'Microsoft-Windows-Kernel-Processor-Power') }
+        @{ Quelle = 'Absturz'
+           Anbieter = @('BugCheck', 'Microsoft-Windows-WER-SystemErrorReporting') }
+        @{ Quelle = 'Netzwerkkarte'
+           Anbieter = @('e1iexpress', 'Microsoft-Windows-NDIS') }
+        @{ Quelle = 'Hersteller'
+           Protokoll = 'Application'
+           Anbieter = @('Server Administrator', 'cissesrv', 'MR_MONITOR', 'MegaRAID',
+                        'IPMIDRV', 'Lenovo XClarity', 'ESMCommonService') }
+    )
 
-    Add-Metrik -Name 'schule_whea_fehler_24h' -Wert (@($whea).Count) `
-        -Labels @{ quelle = 'WHEA' } `
-        -Hilfe 'Hardwarefehler laut WHEA in den letzten 24 Stunden (CPU, RAM, PCIe)'
+    foreach ($bereich in $bereiche) {
+        $protokoll = if ($bereich.ContainsKey('Protokoll')) { $bereich.Protokoll } else { 'System' }
 
-    # Datentraegerfehler: 7 = fehlerhafter Block, 11 = Controllerfehler,
-    # 51 = Fehler beim Auslagern, 153 = Anforderung abgebrochen
-    $platte = Get-WinEvent -FilterHashtable @{
-        LogName   = 'System'
-        ProviderName = @('disk', 'Disk')
-        StartTime = $seit
-        Level     = @(1, 2, 3)
-    } -ErrorAction SilentlyContinue
+        $gefunden = @(Get-WinEvent -FilterHashtable @{
+            LogName      = $protokoll
+            ProviderName = $bereich.Anbieter
+            StartTime    = $seit
+        } -ErrorAction SilentlyContinue)
 
-    Add-Metrik -Name 'schule_hardware_ereignisse_24h' -Wert (@($platte).Count) `
-        -Labels @{ quelle = 'Datentraeger' } `
-        -Hilfe 'Hardwarenahe Fehlereintraege der letzten 24 Stunden'
+        Add-Metrik -Name 'schule_hardware_ereignisse_24h' -Wert $gefunden.Count `
+            -Labels @{ quelle = $bereich.Quelle } `
+            -Hilfe 'Hardwarenahe Protokolleintraege der letzten 24 Stunden'
 
-    # Unerwartete Neustarts
-    $abstuerze = Get-WinEvent -FilterHashtable @{
-        LogName = 'System'
-        Id      = @(41, 1001, 6008)
-        StartTime = $seit
-    } -ErrorAction SilentlyContinue
+        # Level 1 = kritisch, 2 = Fehler. Alles darueber ist Warnung oder
+        # Information – wichtig zu sehen, aber kein akuter Befund.
+        $schwer = @($gefunden | Where-Object { $_.Level -le 2 })
+        Add-Metrik -Name 'schule_hardware_fehler_24h' -Wert $schwer.Count `
+            -Labels @{ quelle = $bereich.Quelle } `
+            -Hilfe 'Davon Eintraege der Stufe "Fehler" oder "Kritisch"'
 
-    Add-Metrik -Name 'schule_hardware_ereignisse_24h' -Wert (@($abstuerze).Count) `
-        -Labels @{ quelle = 'Absturz' }
+        if ($gefunden.Count -gt 0) {
+            $letztes = $gefunden | Sort-Object TimeCreated -Descending | Select-Object -First 1
+            $sekunden = [int64](($letztes.TimeCreated.ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds)
+            Add-Metrik -Name 'schule_hardware_letztes_ereignis_zeitstempel' -Wert $sekunden `
+                -Labels @{ quelle = $bereich.Quelle } `
+                -Hilfe 'Zeitpunkt des juengsten Eintrags in diesem Bereich'
+        }
+
+        # WHEA bekommt zusaetzlich den eingefuehrten eigenen Namen, damit
+        # bestehende Regeln und Dashboards weiterlaufen.
+        if ($bereich.Quelle -eq 'WHEA') {
+            Add-Metrik -Name 'schule_whea_fehler_24h' -Wert $gefunden.Count `
+                -Labels @{ quelle = 'WHEA' } `
+                -Hilfe 'Hardwarefehler laut WHEA in den letzten 24 Stunden (CPU, RAM, PCIe)'
+        }
+    }
 
     # War der letzte Neustart geplant? 1074 = angefordertes Herunterfahren
     $geplant = Get-WinEvent -FilterHashtable @{
@@ -303,7 +360,8 @@ Invoke-Abschnitt 'ereignisse' {
         StartTime = (Get-Date).AddHours(-2)
     } -ErrorAction SilentlyContinue
 
-    Add-Metrik -Name 'schule_letzter_neustart_geplant' -Wert $(if (@($geplant).Count -gt 0) { 1 } else { 0 }) `
+    Add-Metrik -Name 'schule_letzter_neustart_geplant' `
+        -Wert $(if (@($geplant).Count -gt 0) { 1 } else { 0 }) `
         -Hilfe '1 = der letzte Neustart wurde angefordert, 0 = unerwartet'
 }
 
@@ -581,6 +639,65 @@ Invoke-Abschnitt 'hyperv' {
         Add-Metrik -Name 'schule_hyperv_host_speicher_frei_prozent' `
             -Wert ([math]::Round(100 * $betriebssystem.FreePhysicalMemory / $betriebssystem.TotalVisibleMemorySize, 1)) `
             -Hilfe 'Freier Arbeitsspeicher des Hyper-V-Hosts in Prozent'
+    }
+}
+
+# ===================================================================== #
+# Bauteile: Arbeitsspeicher und Netzwerkkarten
+#
+# Meldet WHEA einen Speicherfehler, ist die erste Frage immer "welcher
+# Riegel?". Diese Angaben stehen dann schon da, statt dass jemand den
+# Server aufschrauben muss.
+# ===================================================================== #
+Invoke-Abschnitt 'bauteile' {
+
+    $module = @(Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue)
+
+    Add-Metrik -Name 'schule_speichermodule_anzahl' -Wert $module.Count `
+        -Hilfe 'Anzahl der verbauten Speichermodule'
+
+    foreach ($modul in $module) {
+        $labels = @{
+            steckplatz   = if ($modul.DeviceLocator) { [string]$modul.DeviceLocator } else { 'unbekannt' }
+            hersteller   = [string]$modul.Manufacturer
+            teilenummer  = [string]$modul.PartNumber
+            seriennummer = [string]$modul.SerialNumber
+        }
+
+        if ($modul.Capacity) {
+            Add-Metrik -Name 'schule_speichermodul_kapazitaet_bytes' -Wert ([double]$modul.Capacity) `
+                -Labels $labels -Hilfe 'Kapazitaet des einzelnen Speichermoduls'
+        }
+
+        $takt = if ($modul.ConfiguredClockSpeed) { $modul.ConfiguredClockSpeed } else { $modul.Speed }
+        if ($takt) {
+            Add-Metrik -Name 'schule_speichermodul_takt_mhz' -Wert ([double]$takt) `
+                -Labels $labels -Hilfe 'Tatsaechlicher Takt des Speichermoduls in MHz'
+        }
+    }
+
+    # --- Netzwerkkarten -------------------------------------------------
+    # Eine Gigabit-Karte, die mit 100 Mbit laeuft, ist fast immer ein
+    # defektes Kabel oder eine schlechte Steckverbindung – und faellt sonst
+    # nur als "das Netz ist langsam" auf.
+    $karten = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue)
+
+    foreach ($karte in $karten) {
+        $labels = @{
+            karte   = [string]$karte.Name
+            treiber = [string]$karte.InterfaceDescription
+            mac     = [string]$karte.MacAddress
+        }
+
+        Add-Metrik -Name 'schule_netzwerkkarte_verbunden' `
+            -Wert $(if ($karte.Status -eq 'Up') { 1 } else { 0 }) `
+            -Labels ($labels + @{ zustand = [string]$karte.Status }) `
+            -Hilfe '1 = Verbindung besteht'
+
+        if ($karte.Status -eq 'Up' -and $karte.Speed -gt 0) {
+            Add-Metrik -Name 'schule_netzwerkkarte_geschwindigkeit_bit' -Wert ([double]$karte.Speed) `
+                -Labels $labels -Hilfe 'Ausgehandelte Verbindungsgeschwindigkeit in Bit pro Sekunde'
+        }
     }
 }
 

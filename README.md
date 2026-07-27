@@ -71,6 +71,10 @@ Fertig.
 | Zertifikat läuft ab | Zertifikatspeicher und TLS-Prüfung |
 | USV auf Batterie, Batterie schwach | SNMP |
 | Datensicherung fehlt oder schlug fehl | Windows Server-Sicherung, Veeam |
+| Platte antwortet zunehmend langsam | Antwortzeit je Zugriff, Spitzenlatenz des Laufwerks |
+| Laufwerk korrigiert immer mehr Lesefehler | Zuverlässigkeitszähler |
+| Controller setzt Laufwerke zurück | Ereignis 129 im Hardware-Protokoll |
+| Gigabit-Karte läuft nur noch mit 100 Mbit | Vergleich mit dem Vortag |
 
 ### Sicherheit
 
@@ -140,6 +144,7 @@ Lizenzkosten, alle Daten bleiben in der Schule.
 | **Netzwerk – UniFi & FortiGate** | Access Points, Switches, Firewall |
 | **Sicherheit & Angriffserkennung** | Anmeldeversuche, verdächtige Befehle, Firewall-Vorfälle |
 | **Sicherheits-Baseline** | Sind die Geräte überhaupt richtig eingestellt? Erfüllungsgrad je Gerät und Bereich |
+| **Hardware-Leistung & Protokolle** | Antwortzeiten, Fehlerzähler und die Hardware-Meldungen im Klartext |
 
 ---
 
@@ -165,6 +170,7 @@ docs/       Anleitungen
 | [05-alarmierung.md](docs/05-alarmierung.md) | E-Mail, Schweregrade, eigene Regeln |
 | [06-security-monitoring.md](docs/06-security-monitoring.md) | Angriffserkennung und Audit-Einstellungen |
 | [07-betrieb.md](docs/07-betrieb.md) | Sicherung, Updates, Kapazität |
+| [09-hardware.md](docs/09-hardware.md) | Hardware-Protokolle, Leistungs- und Fehlerdaten |
 | [08-fehlersuche.md](docs/08-fehlersuche.md) | Wenn etwas nicht läuft |
 
 ---

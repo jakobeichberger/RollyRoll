@@ -115,7 +115,11 @@ loki.source.windowsevent "system" {
   // Level 1 = kritisch, 2 = Fehler, 3 = Warnung
   // dazu gezielt die Ereignisse, die auch als "Information" kommen
   // koennen, aber wichtig sind (neuer Dienst, unerwarteter Neustart).
-  xpath_query = "*[System[(Level=1 or Level=2 or Level=3) or (EventID=41 or EventID=1001 or EventID=6005 or EventID=6006 or EventID=6008 or EventID=7045 or EventID=1074)]]"
+  //
+  // Die Hardware-Anbieter sind hier bewusst ausgeklammert – die holt der
+  // eigene Block weiter unten vollstaendig ab, damit nichts doppelt
+  // gespeichert wird.
+  xpath_query = "*[System[(Level=1 or Level=2 or Level=3) or (EventID=41 or EventID=1001 or EventID=6005 or EventID=6006 or EventID=6008 or EventID=7045 or EventID=1074)]] and *[System[not(Provider[@Name='Microsoft-Windows-WHEA-Logger' or @Name='disk' or @Name='Disk' or @Name='Ntfs' or @Name='volmgr' or @Name='volsnap' or @Name='storahci' or @Name='stornvme' or @Name='iaStorA' or @Name='megasas' or @Name='megasas2' or @Name='HpCISSs3' or @Name='mpio' or @Name='msiscsi' or @Name='Microsoft-Windows-StorPort' or @Name='Microsoft-Windows-Kernel-Power' or @Name='Microsoft-Windows-Kernel-Processor-Power' or @Name='BugCheck' or @Name='Microsoft-Windows-WER-SystemErrorReporting' or @Name='Microsoft-Windows-Ntfs' or @Name='e1iexpress' or @Name='EhStorClass'])]]"
 
   labels = {
     job     = "windows_events",
@@ -178,6 +182,61 @@ loki.source.windowsevent "powershell" {
   labels = {
     job     = "windows_events",
     channel = "PowerShell",
+  }
+
+  forward_to = [loki.process.ereignisse.receiver]
+}
+
+// ---------------------------------------------------------------- //
+// Hardware
+//
+// Ausgewaehlt wird nach ANBIETER, nicht nach Schweregrad – und das ist
+// der entscheidende Punkt: WHEA protokolliert korrigierte Hardwarefehler
+// haeufig als "Information". Genau diese Eintraege sind die frueheste
+// Vorwarnung, die es fuer sterbenden Arbeitsspeicher oder eine kippende
+// PCIe-Verbindung ueberhaupt gibt. Ein Filter nach Level 1-3 wuerde sie
+// wegwerfen.
+//
+// Ebenfalls dabei: Controller-Ruecksetzungen (storahci/stornvme 129),
+// fehlerhafte Bloecke (disk 7/51/153), Dateisystemfehler (Ntfs 55),
+// Bluescreens (BugCheck 1001) und unerwartete Neustarts (Kernel-Power 41).
+// ---------------------------------------------------------------- //
+loki.source.windowsevent "hardware" {
+  eventlog_name          = "System"
+  bookmark_path          = "C:\\ProgramData\\SchulMonitoring\\alloy\\hardware.xml"
+  poll_interval          = "15s"
+  use_incoming_timestamp = true
+  exclude_event_data     = false
+
+  xpath_query = "*[System[Provider[@Name='Microsoft-Windows-WHEA-Logger' or @Name='disk' or @Name='Disk' or @Name='Ntfs' or @Name='volmgr' or @Name='volsnap' or @Name='storahci' or @Name='stornvme' or @Name='iaStorA' or @Name='megasas' or @Name='megasas2' or @Name='HpCISSs3' or @Name='mpio' or @Name='msiscsi' or @Name='Microsoft-Windows-StorPort' or @Name='Microsoft-Windows-Kernel-Power' or @Name='Microsoft-Windows-Kernel-Processor-Power' or @Name='BugCheck' or @Name='Microsoft-Windows-WER-SystemErrorReporting' or @Name='Microsoft-Windows-Ntfs' or @Name='e1iexpress' or @Name='EhStorClass']]]"
+
+  labels = {
+    job     = "windows_events",
+    channel = "Hardware",
+  }
+
+  forward_to = [loki.process.ereignisse.receiver]
+}
+
+// ---------------------------------------------------------------- //
+// Hardware-Verwaltungsprogramme der Hersteller
+//
+// Dell OpenManage, HPE Smart Storage, LSI/Broadcom MegaRAID und Lenovo
+// XClarity melden Plattenausfaelle, defekte Netzteile und Luefter in das
+// Anwendungsprotokoll. Ist keines davon installiert, bleibt der Kanal
+// einfach leer – das kostet nichts.
+// ---------------------------------------------------------------- //
+loki.source.windowsevent "hardware_hersteller" {
+  eventlog_name          = "Application"
+  bookmark_path          = "C:\\ProgramData\\SchulMonitoring\\alloy\\hardware-hersteller.xml"
+  poll_interval          = "30s"
+  use_incoming_timestamp = true
+
+  xpath_query = "*[System[Provider[@Name='Server Administrator' or @Name='cissesrv' or @Name='MR_MONITOR' or @Name='MegaRAID' or @Name='IPMIDRV' or @Name='Lenovo XClarity' or @Name='ESMCommonService' or @Name='HpSmhCore' or @Name='Intel(R) Rapid Storage Technology']]]"
+
+  labels = {
+    job     = "windows_events",
+    channel = "Hardware",
   }
 
   forward_to = [loki.process.ereignisse.receiver]
