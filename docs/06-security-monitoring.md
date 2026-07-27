@@ -1,4 +1,19 @@
-# Angriffserkennung
+# Sicherheit
+
+Zwei Ebenen, die sich gegenseitig brauchen:
+
+* **Angriffserkennung** – „passiert gerade etwas?" Wertet die
+  Ereignisprotokolle aus.
+* **Härtungs-Baseline** – „sind wir überhaupt richtig eingestellt?" Prüft
+  die Konfiguration der Geräte.
+
+Die Reihenfolge ist kein Zufall: Ohne die Baseline-Einstellungen
+protokolliert Windows die gesuchten Ereignisse gar nicht erst — dann läuft
+die beste Angriffserkennung ins Leere.
+
+---
+
+# Teil 1: Angriffserkennung
 
 Was hier erkannt wird, was dafür eingeschaltet sein muss, und was bei einem
 Treffer zu tun ist.
@@ -221,3 +236,180 @@ angefasst werden.
 > Ist Sysmon **nicht** installiert, darf dieser Block nicht in der
 > Konfiguration stehen: Alloy findet den Kanal dann nicht und meldet einen
 > Fehler.
+
+---
+---
+
+# Teil 2: Härtungs-Baseline
+
+Die Angriffserkennung sagt, wenn etwas passiert. Die Baseline sagt, wie
+wahrscheinlich es überhaupt passieren kann.
+
+Jedes Gerät prüft sich stündlich selbst gegen **45 Punkte** aus den
+CIS Benchmarks, dem BSI-Grundschutz und der Microsoft Security Baseline —
+bewusst nur die, die in einer Schule realistisch umsetzbar sind und einen
+echten Unterschied machen. Das Ergebnis steht im Dashboard
+**„Sicherheits-Baseline"**.
+
+Jede Prüfung liefert einen von drei Werten:
+
+| Wert | Bedeutung |
+|---|---|
+| **1** | eingestellt wie empfohlen |
+| **0** | Abweichung |
+| **2** | auf diesem Gerät nicht prüfbar oder nicht zutreffend |
+
+Der dritte Wert ist wichtig: Ein Standrechner hat kein Credential Guard,
+ein Client ist kein Domänencontroller. Solche Fälle verfälschen den
+Erfüllungsgrad nicht, tauchen aber nachvollziehbar auf.
+
+---
+
+## Was geprüft wird
+
+### Diebstahl von Zugangsdaten
+
+Der häufigste Weg, wie aus einem infizierten Rechner ein infiziertes
+Schulnetz wird.
+
+| Prüfung | Warum es zählt |
+|---|---|
+| LSA-Schutz (`RunAsPPL`) | Ohne ihn lassen sich Kennwörter direkt aus dem Speicher auslesen |
+| WDigest-Klartext aus | Ist der Wert gesetzt, ist das fast immer die Handschrift eines Angreifers |
+| NTLMv1 unterbunden | NTLMv1-Hashes sind in Minuten geknackt |
+| LLMNR deaktiviert | Der Klassiker: Anmeldedaten aus dem Schülernetz abfangen |
+| NetBIOS deaktiviert | Dasselbe Problem wie LLMNR |
+| Anonyme Abfrage gesperrt | Verhindert das Auslesen von Konten- und Freigabelisten |
+| Credential Guard | Kapselt Anmeldedaten hardwareseitig ab |
+
+### Netzwerk und Verschlüsselung
+
+SMBv1 (Einfallstor von WannaCry), SMB-Signierung gegen Relay-Angriffe,
+veraltete TLS-Versionen, Firewall-Standardverhalten, RDP mit
+Netzwerkauthentifizierung.
+
+### Ausführung und Nachvollziehbarkeit
+
+PowerShell-Skriptblock- und Modulprotokollierung, PowerShell 2.0 entfernt
+(damit lässt sich jede Protokollierung umgehen), Befehlszeile in
+Ereignis 4688, AutoRun, UAC, Secure Boot — dazu die sechs
+Überwachungs-Unterkategorien und die Größe des Sicherheitsprotokolls.
+
+> Die Unterkategorien werden über ihre **GUID** gelesen, nicht über den
+> Namen. Auf einem deutschen Windows heißen sie „Prozesserstellung" statt
+> „Process Creation" — ein Abgleich über Klartext würde dort reihenweise
+> Fehlalarme erzeugen.
+
+### Virenschutz
+
+Manipulationsschutz, Cloudschutz, Netzwerkschutz, PUA-Schutz und die
+Regeln zur Angriffsflächenreduzierung (ASR) — besonders die eine, die das
+Auslesen von Anmeldedaten aus LSASS blockiert.
+
+### Konten
+
+Gastkonto, eingebautes Administratorkonto, Anzahl lokaler Administratoren
+und **LAPS**. Letzteres ist der wirkungsvollste Einzelpunkt der ganzen
+Liste: Ohne eindeutige lokale Administratorkennwörter öffnet ein einziges
+erbeutetes Kennwort sämtliche Rechner der Schule.
+
+### Rechteausweitung
+
+Dienstpfade mit Leerzeichen ohne Anführungszeichen (Windows startet dann
+unter Umständen ein untergeschobenes Programm mit Systemrechten) und die
+Druckwarteschlange auf Domänencontrollern (PrintNightmare).
+
+### Active Directory
+
+Läuft nur auf Domänencontrollern und braucht das PowerShell-Modul
+`ActiveDirectory`:
+
+| Prüfung | Warum es zählt |
+|---|---|
+| krbtgt-Kennwortalter | Wer den Schlüssel erbeutet, stellt sich beliebige Tickets aus — bis das Kennwort **zweimal** gewechselt wurde |
+| Konten ohne Vorauthentifizierung | Kennwort offline knackbar, ganz ohne Anmeldung (AS-REP Roasting) |
+| Dienstkonten mit altem Kennwort | Angriffsfläche für Kerberoasting |
+| Anzahl Domänen-Administratoren | Jedes Konto mehr ist ein Weg mehr, die Domäne zu übernehmen |
+| Karteileichen | Aktivierte Konten ohne Anmeldung seit 90 Tagen |
+| Kennwortlänge, Sperrschwelle | Ohne Sperrschwelle laufen Kennwortangriffe unbegrenzt |
+
+Die Gruppen werden über ihre **SID** angesprochen (`…-512` für
+Domänen-Admins), nicht über den Namen — auf einem deutschen AD heißt die
+Gruppe „Domänen-Admins".
+
+---
+
+## Wie damit gearbeitet wird
+
+Das Dashboard ist nach Wirkung sortiert, nicht alphabetisch. Der übliche
+Ablauf:
+
+1. **„Offene Punkte"** — ganz oben steht, was die meisten Geräte betrifft.
+   Fast immer fehlt überall dieselbe Gruppenrichtlinie. Ein Handgriff hebt
+   dann den Wert der ganzen Schule.
+2. Die Spalte **„Was zu tun ist"** enthält die konkrete Maßnahme, teils
+   samt Registry-Wert. Nichts nachschlagen müssen.
+3. Prüfung oben im Kopf auswählen → die Tabelle **„Geräte, bei denen …
+   abweicht"** listet genau die Rechner, die angefasst werden müssen.
+4. **„Erfüllungsgrad je Bereich"** zeigt, wo der nächste Handgriff am
+   meisten bringt.
+
+Die Alarme sind **je Prüfung aggregiert**, nicht je Gerät: Fehlt in der
+ganzen Schule dieselbe Einstellung, ist das eine Mail mit der Anzahl
+betroffener Geräte.
+
+### Zwei Alarme, die keine Baseline-Meldungen sind
+
+Diese beiden gehen als `critical` sofort raus, weil sie keine
+Fehlkonfiguration beschreiben, sondern einen laufenden Angriff:
+
+* **`DefenderManipulationsschutzAus`** — der Manipulationsschutz schaltet
+  sich nicht von selbst ab. Ist er aus, hat das jemand getan.
+* **`WdigestKlartextAktiv`** — diese Einstellung ist seit Jahren nicht mehr
+  Standard. Wird sie gesetzt, ist das die Vorbereitung eines Angriffs auf
+  Zugangsdaten.
+
+Dazu kommt **`HaertungNeueAbweichung`**: Eine Einstellung, die gestern noch
+in Ordnung war und es heute nicht mehr ist. Entweder eine geplante Änderung
+— oder jemand hat gezielt eine Schutzfunktion abgeschaltet.
+
+---
+
+## Realistisch bleiben
+
+Ein frisch installiertes Windows erreicht typischerweise **40 bis 60 %**.
+Das ist normal und kein Grund zur Panik — es ist der Ausgangspunkt.
+
+Was sich in der Praxis bewährt hat: nicht alles auf einmal, sondern die
+Punkte mit hoher Schwere zuerst und immer per Gruppenrichtlinie, nie von
+Hand am einzelnen Gerät. Nach jeder Änderung einen Tag beobachten, ob im
+Unterricht etwas klemmt. Der Verlauf im Dashboard zeigt, ob es vorangeht.
+
+Zwei Punkte brauchen erfahrungsgemäß Absprache, weil sie im Schulbetrieb
+etwas kaputt machen können:
+
+* **Kontrollierter Ordnerzugriff** blockiert gern legitime Fachsoftware.
+* **ASR-Regeln** können ältere Programme ausbremsen — erst im
+  Überwachungsmodus (`AttackSurfaceReductionRules_Actions = 2`) laufen
+  lassen, dann auf Blockieren stellen.
+
+Eine Prüfung, die in der Schule bewusst anders gelöst ist, gehört nicht
+ignoriert, sondern dokumentiert. Wer eine Prüfung dauerhaft ausblenden
+will, kommentiert den entsprechenden `Add-Pruefung`-Aufruf in
+`agent/Collect-SecurityBaseline.ps1` aus und rollt die neue Agent-Version
+aus — dann fehlt der Punkt nachvollziehbar in der Bewertung, statt
+dauerhaft rot zu leuchten.
+
+---
+
+## Von Hand prüfen
+
+Auf einem Gerät nachsehen, was genau bemängelt wird:
+
+```powershell
+powershell -ExecutionPolicy Bypass `
+  -File "$env:ProgramData\SchulMonitoring\Collect-SecurityBaseline.ps1" -Verbose
+```
+
+Die Ausgabe listet jede Prüfung mit `ok`, `ABWEICHUNG` oder `n/a` und
+endet mit dem Erfüllungsgrad des Geräts.

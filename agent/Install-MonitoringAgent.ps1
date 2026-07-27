@@ -65,13 +65,14 @@ $ProgressPreference = 'SilentlyContinue'
 # ===================================================================== #
 # Konstanten
 # ===================================================================== #
-$AgentVersion   = '1.0.0'
+$AgentVersion   = '1.1.0'
 $BasisPfad      = "$env:ProgramData\SchulMonitoring"
 $TextdateiPfad  = "$BasisPfad\textfile"
 $ProtokollPfad  = "$BasisPfad\logs"
 $ArbeitsPfad    = "$BasisPfad\temp"
 $VersionsDatei  = "$BasisPfad\agent-version.txt"
 $AufgabenName   = 'SchulMonitoring-Hardwarepruefung'
+$AufgabeSicherheit = 'SchulMonitoring-Sicherheitspruefung'
 
 $ServerUrl = $ServerUrl.TrimEnd('/')
 
@@ -409,6 +410,60 @@ function Install-Hardwarepruefung {
     Start-ScheduledTask -TaskName $AufgabenName -ErrorAction SilentlyContinue
 }
 
+function Install-Sicherheitspruefung {
+    <#
+        Prueft die Grundhaertung des Geraets gegen die ueblichen
+        Empfehlungen (CIS, BSI-Grundschutz, Microsoft Security Baseline).
+
+        Stuendlich statt alle fuenf Minuten: Diese Einstellungen aendern
+        sich selten, die AD-Abfragen auf einem Domaenencontroller kosten
+        aber spuerbar mehr als eine Registry-Abfrage.
+    #>
+    $skriptZiel = Join-Path $BasisPfad 'Collect-SecurityBaseline.ps1'
+
+    if (-not (Invoke-ServerAbruf -Pfad 'Collect-SecurityBaseline.ps1' -Zieldatei $skriptZiel)) {
+        $daneben = Join-Path $PSScriptRoot 'Collect-SecurityBaseline.ps1'
+        if (Test-Path -LiteralPath $daneben) {
+            Copy-Item -LiteralPath $daneben -Destination $skriptZiel -Force
+        } else {
+            Schreibe 'Collect-SecurityBaseline.ps1 wurde nicht gefunden – die Baseline-Pruefung entfaellt.' -Art Warnung
+            return
+        }
+    }
+
+    Unblock-File -LiteralPath $skriptZiel -ErrorAction SilentlyContinue
+
+    $aktion = New-ScheduledTaskAction -Execute 'powershell.exe' `
+        -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$skriptZiel`" -AusgabePfad `"$TextdateiPfad`""
+
+    # Zufaelliger Versatz, damit nicht alle Geraete der Schule zur vollen
+    # Stunde gleichzeitig den Domaenencontroller befragen.
+    $versatz = Get-Random -Minimum 0 -Maximum 55
+    $ausloeser = New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes($versatz) `
+        -RepetitionInterval (New-TimeSpan -Hours 1)
+
+    $start = New-ScheduledTaskTrigger -AtStartup
+
+    $konto = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+
+    $einstellungen = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable -MultipleInstances IgnoreNew `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 20) `
+        -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 10)
+
+    Unregister-ScheduledTask -TaskName $AufgabeSicherheit -Confirm:$false -ErrorAction SilentlyContinue
+
+    Register-ScheduledTask -TaskName $AufgabeSicherheit `
+        -Action $aktion -Trigger @($ausloeser, $start) -Principal $konto `
+        -Settings $einstellungen `
+        -Description 'Prueft die Sicherheits-Grundhaertung des Geraets fuer das Schul-Monitoring.' | Out-Null
+
+    Schreibe 'Geplante Aufgabe fuer die Sicherheits-Baseline eingerichtet' -Art Erfolg
+
+    Start-ScheduledTask -TaskName $AufgabeSicherheit -ErrorAction SilentlyContinue
+}
+
 function Set-Firewallregel {
     $regelName = 'Schul-Monitoring – Metrikabruf'
 
@@ -521,6 +576,7 @@ try {
     Install-WindowsExporter -System $system
     Set-Firewallregel
     Install-Hardwarepruefung
+    Install-Sicherheitspruefung
     Install-Alloy -System $system
     Register-BeimServer -System $system | Out-Null
 

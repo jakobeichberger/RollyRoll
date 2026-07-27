@@ -14,10 +14,11 @@ Verwaltungswerkzeugen:
 $ziel = "\\schule.local\SYSVOL\schule.local\scripts"
 Copy-Item .\agent\Install-MonitoringAgent.ps1   $ziel
 Copy-Item .\agent\Collect-HardwareHealth.ps1    $ziel
+Copy-Item .\agent\Collect-SecurityBaseline.ps1  $ziel
 Copy-Item .\agent\Uninstall-MonitoringAgent.ps1 $ziel
 ```
 
-`Collect-HardwareHealth.ps1` gehört mit dazu: Der Agent lädt es zwar
+Die beiden `Collect-*.ps1` gehören mit dazu: Der Agent lädt sie zwar
 normalerweise vom Monitoring-Server, greift aber auf die Kopie daneben
 zurück, falls der Server gerade nicht erreichbar ist.
 
@@ -112,8 +113,13 @@ Zum sofortigen Prüfen auf einem einzelnen Rechner (als Administrator):
    bereitstellt. Die Clients brauchen dafür **keinen Internetzugang**.
 3. **Öffnet die Firewall** auf Port 9182 – nur für die IP des
    Monitoring-Servers.
-4. **Richtet die Hardwareprüfung ein**: eine geplante Aufgabe, die alle
-   fünf Minuten als `SYSTEM` läuft.
+4. **Richtet zwei geplante Aufgaben ein**, beide als `SYSTEM`:
+   die Hardwareprüfung alle fünf Minuten und die Sicherheits-Baseline
+   stündlich. Die Baseline läuft seltener, weil sich Einstellungen selten
+   ändern und die AD-Abfragen auf einem Domänencontroller mehr kosten als
+   eine Registry-Abfrage. Der Startzeitpunkt ist je Gerät zufällig
+   versetzt, damit nicht die ganze Schule zur vollen Stunde gleichzeitig
+   den Domänencontroller befragt.
 5. **Installiert Grafana Alloy** und holt sich dessen Konfiguration vom
    Server. Dadurch lassen sich später zentral andere Ereignisse einsammeln,
    ohne die GPO anzufassen.
@@ -143,6 +149,7 @@ nächsten Neustart aktualisiert sich jedes Gerät selbst.
 
 ```powershell
 Get-Service windows_exporter, Alloy
+Get-ScheduledTask SchulMonitoring-*
 Invoke-WebRequest http://localhost:9182/metrics -UseBasicParsing |
     Select-Object -ExpandProperty Content |
     Select-String "schule_"

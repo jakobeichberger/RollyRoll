@@ -74,10 +74,21 @@ Fertig.
 
 ### Sicherheit
 
-Angriffserkennung auf Basis der Ereignisprotokolle – von Kennwortangriffen über
-Rechteausweitung bis zu den typischen Vorbereitungsschritten eines
-Verschlüsselungstrojaners. Dazu die Auswertung der FortiGate-Protokolle
-(IPS, Virenfunde, Botnetz-Kontakte).
+Zwei Ebenen, die sich ergänzen:
+
+**Angriffserkennung** – „passiert gerade etwas?" Ausgewertet werden die
+Ereignisprotokolle: Kennwortangriffe, Rechteausweitung, verschleierte
+PowerShell, zweckentfremdete Bordmittel und die typischen Vorbereitungs­schritte
+eines Verschlüsselungstrojaners. Dazu die FortiGate-Protokolle (IPS,
+Virenfunde, Botnetz-Kontakte).
+
+**Härtungs-Baseline** – „sind wir überhaupt richtig eingestellt?" 45 Prüfungen
+gegen CIS Benchmarks, BSI-Grundschutz und die Microsoft Security Baseline:
+LSA-Schutz, WDigest, LLMNR, SMBv1, NTLMv1, LAPS, ASR-Regeln,
+Manipulationsschutz, Audit-Richtlinien, RDP, veraltete TLS-Versionen und im
+Active Directory krbtgt-Alter, AS-REP-Konten und Kerberoasting-Angriffsfläche.
+Jedes Gerät bekommt einen Erfüllungsgrad, das Dashboard sortiert nach Wirkung.
+
 → [docs/06-security-monitoring.md](docs/06-security-monitoring.md)
 
 ### Netzwerk
@@ -128,6 +139,7 @@ Lizenzkosten, alle Daten bleiben in der Schule.
 | **Hardware & Vorwarnungen** | Alles, was auf einen bevorstehenden Ausfall hindeutet |
 | **Netzwerk – UniFi & FortiGate** | Access Points, Switches, Firewall |
 | **Sicherheit & Angriffserkennung** | Anmeldeversuche, verdächtige Befehle, Firewall-Vorfälle |
+| **Sicherheits-Baseline** | Sind die Geräte überhaupt richtig eingestellt? Erfüllungsgrad je Gerät und Bereich |
 
 ---
 

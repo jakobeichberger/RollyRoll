@@ -27,7 +27,7 @@ Set-StrictMode -Version 1.0
 $ErrorActionPreference = 'Continue'
 
 $BasisPfad    = "$env:ProgramData\SchulMonitoring"
-$AufgabenName = 'SchulMonitoring-Hardwarepruefung'
+$Aufgaben = @('SchulMonitoring-Hardwarepruefung', 'SchulMonitoring-Sicherheitspruefung')
 
 function Melde { param([string]$Text) Write-Host "  $Text" -ForegroundColor Gray }
 
@@ -36,10 +36,12 @@ Write-Host "Monitoring-Agent wird von $env:COMPUTERNAME entfernt" -ForegroundCol
 Write-Host ''
 
 # --- Geplante Aufgabe -------------------------------------------------
-if (Get-ScheduledTask -TaskName $AufgabenName -ErrorAction SilentlyContinue) {
-    if ($PSCmdlet.ShouldProcess($AufgabenName, 'Geplante Aufgabe entfernen')) {
-        Unregister-ScheduledTask -TaskName $AufgabenName -Confirm:$false
-        Melde 'Geplante Aufgabe entfernt'
+foreach ($aufgabe in $Aufgaben) {
+    if (Get-ScheduledTask -TaskName $aufgabe -ErrorAction SilentlyContinue) {
+        if ($PSCmdlet.ShouldProcess($aufgabe, 'Geplante Aufgabe entfernen')) {
+            Unregister-ScheduledTask -TaskName $aufgabe -Confirm:$false
+            Melde "Geplante Aufgabe '$aufgabe' entfernt"
+        }
     }
 }
 

@@ -19,6 +19,12 @@ wertvollen Meldungen sind: Hier lässt sich noch in Ruhe handeln.
 Sicherheitsvorfälle (`kategorie: security`) laufen an der normalen Bündelung
 vorbei und gehen nach 10 Sekunden raus.
 
+Meldungen aus der Härtungs-Baseline tragen zusätzlich `baseline: ja`. Sie sind
+bewusst **je Prüfung aggregiert**, nicht je Gerät: Fehlt in der ganzen Schule
+dieselbe Gruppenrichtlinie, ist das eine Mail mit der Anzahl betroffener
+Geräte – nicht dreihundert Mails. Welche Geräte genau, steht im Dashboard
+„Sicherheits-Baseline".
+
 ---
 
 ## E-Mail einrichten
@@ -135,6 +141,7 @@ Die Regeln liegen in `/opt/schulmonitoring/stack/prometheus/rules/`:
 | `20-verfuegbarkeit.yml` | Erreichbarkeit |
 | `30-windows.yml` | Dienste, Sicherheitshygiene, Sicherung, Hyper-V |
 | `40-netzwerk.yml` | SNMP, UniFi, FortiGate |
+| `50-sicherheits-baseline.yml` | Abweichungen von der Grundhärtung |
 
 Eine eigene Regel, zum Beispiel für den Server der Schulverwaltung:
 

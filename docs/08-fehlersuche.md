@@ -161,6 +161,30 @@ schule_pruefabschnitt_erfolgreich == 0
 Dass einzelne Abschnitte auf einzelnen Geräten scheitern, ist normal – ein
 virtueller Server hat keine S.M.A.R.T.-Werte, ein Standrechner keinen Akku.
 
+### Das Baseline-Dashboard bleibt leer
+
+```powershell
+Get-ScheduledTask SchulMonitoring-Sicherheitspruefung | Get-ScheduledTaskInfo
+Get-ChildItem "$env:ProgramData\SchulMonitoring\textfile\schule_sicherheit.prom"
+
+# Von Hand ausführen – zeigt jede Prüfung einzeln
+powershell -ExecutionPolicy Bypass `
+  -File "$env:ProgramData\SchulMonitoring\Collect-SecurityBaseline.ps1" -Verbose
+```
+
+Die Aufgabe entsteht erst ab Agent-Version 1.1.0. Steht in
+`C:\ProgramData\SchulMonitoring\agent-version.txt` noch `1.0.0`, hat das
+Gerät die neuen Skripte noch nicht bekommen: aktuelle Fassung nach SYSVOL
+kopieren, `sudo ./stack/pakete-holen.sh` auf dem Server ausführen und das
+Gerät neu starten.
+
+Zeigen sich viele Prüfungen als „nicht prüfbar" (Wert 2), lohnt ein Blick
+auf `schule_sicherheit_abschnitt_erfolgreich == 0` – dort steht, welcher
+Prüfabschnitt auf dem Gerät gescheitert ist.
+
+Die AD-Prüfungen erscheinen nur auf Domänencontrollern und nur, wenn dort
+das PowerShell-Modul `ActiveDirectory` installiert ist.
+
 ---
 
 ## Netzwerkgeräte
