@@ -1,0 +1,374 @@
+---
+# Angriffserkennung auf Basis der Ereignisprotokolle.
+# Loki wertet diese Regeln aus und schickt Treffer an den Alertmanager.
+#
+# Datenquellen:
+#   {job="windows_events"}  – von den Agenten auf Servern und Clients
+#   {job="syslog"}          – FortiGate und UniFi
+groups:
+
+  # ================================================================== #
+  # Anmeldeversuche und Kontenmissbrauch
+  # ================================================================== #
+  - name: security-anmeldung
+    interval: 1m
+    rules:
+
+      - alert: BruteForceAnmeldeversuche
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "4625" | json | event_id="4625" [5m])
+          ) > 20
+        for: 0m
+        labels: { severity: warning, kategorie: security, taktik: "Zugangsdaten erraten" }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} fehlgeschlagene Anmeldungen auf {{ $labels.geraet }} in 5 Minuten"
+          description: >-
+            Sieht nach einem automatisierten Angriff auf Kennwoerter aus.
+            In Grafana unter "Security" die Quell-IP und das Zielkonto nachsehen.
+
+      - alert: BruteForceMassiv
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "4625" | json | event_id="4625" [10m])
+          ) > 100
+        for: 0m
+        labels: { severity: critical, kategorie: security, taktik: "Zugangsdaten erraten" }
+        annotations:
+          summary: "Massiver Anmeldeangriff auf {{ $labels.geraet }} ({{ $value | printf \"%.0f\" }} Fehlversuche/10 min)"
+          description: "Konto sperren, Quell-IP auf der FortiGate blockieren, Kennwoerter pruefen."
+
+      - alert: AnmeldungNachFehlversuchen
+        expr: |
+          (sum by (geraet) (count_over_time({job="windows_events", channel="Security"} |= "4624" | json | event_id="4624" [10m])) > 0)
+          and
+          (sum by (geraet) (count_over_time({job="windows_events", channel="Security"} |= "4625" | json | event_id="4625" [10m])) > 30)
+        for: 0m
+        labels: { severity: critical, kategorie: security, taktik: "Zugangsdaten erraten" }
+        annotations:
+          summary: "Erfolgreiche Anmeldung auf {{ $labels.geraet }} direkt nach vielen Fehlversuchen"
+          description: >-
+            Sehr starker Hinweis auf einen geglueckten Angriff. Sitzung trennen,
+            Kennwort zuruecksetzen und das Geraet genauer untersuchen.
+
+      - alert: KontoGesperrt
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "4740" | json | event_id="4740" [10m])
+          ) > 3
+        labels: { severity: warning, kategorie: security }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} Kontosperrungen auf {{ $labels.geraet }}"
+          description: "Entweder ein Angriff oder ein Geraet mit hinterlegtem altem Kennwort."
+
+      - alert: VieleRdpAnmeldungen
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "4624" |~ "LogonType\"?[:=]\\s*\"?10" [10m])
+          ) > 5
+        labels: { severity: warning, kategorie: security, taktik: "Fernzugriff" }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} RDP-Anmeldungen auf {{ $labels.geraet }} in 10 Minuten"
+          description: >-
+            Ungewoehnlich viele Fernzugriffe. Im Security-Dashboard pruefen,
+            von welchen Quell-IPs und mit welchen Konten sie kommen.
+
+      - alert: VieleAnmeldungenEinesKontos
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "4648" [10m])
+          ) > 50
+        labels: { severity: warning, kategorie: security, taktik: "Seitwaertsbewegung" }
+        annotations:
+          summary: "Auffaellig viele Anmeldungen mit expliziten Zugangsdaten auf {{ $labels.geraet }}"
+          description: "Typisches Muster, wenn sich ein Angreifer im Netz weiterbewegt."
+
+  # ================================================================== #
+  # Rechteausweitung und Manipulation
+  # ================================================================== #
+  - name: security-rechte
+    interval: 1m
+    rules:
+
+      - alert: NeuerAdministrator
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |~ "4732|4728|4756" [5m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Rechteausweitung" }
+        annotations:
+          summary: "Jemand wurde auf {{ $labels.geraet }} einer privilegierten Gruppe hinzugefuegt"
+          description: >-
+            Ereignis 4732/4728/4756. Wenn das keine geplante Aenderung war,
+            ist das eines der deutlichsten Angriffszeichen ueberhaupt.
+
+      - alert: NeuesBenutzerkonto
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "4720" [5m])
+          ) > 0
+        labels: { severity: warning, kategorie: security, taktik: "Dauerhafter Zugang" }
+        annotations:
+          summary: "Neues Benutzerkonto auf {{ $labels.geraet }} angelegt"
+          description: "Abgleichen, ob das aus der Schulverwaltung stammt."
+
+      - alert: SicherheitsprotokollGeleert
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events"} |~ "\"event_id\":1102|\"event_id\":104" [5m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Spurenverwischung" }
+        annotations:
+          summary: "Ereignisprotokoll auf {{ $labels.geraet }} wurde geleert"
+          description: >-
+            Ein geleertes Sicherheitsprotokoll ist fast immer ein Versuch,
+            Spuren zu verwischen. Sofort untersuchen.
+
+      - alert: DienstInstalliert
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="System"} |= "7045" [5m])
+          ) > 0
+        labels: { severity: warning, kategorie: security, taktik: "Dauerhafter Zugang" }
+        annotations:
+          summary: "Neuer Systemdienst auf {{ $labels.geraet }} installiert"
+          description: "PsExec, Fernwartungswerkzeuge und viele Schadprogramme tun genau das."
+
+      - alert: GeplanteAufgabeErstellt
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "4698" [5m])
+          ) > 0
+        labels: { severity: info, kategorie: security, taktik: "Dauerhafter Zugang" }
+        annotations:
+          summary: "Neue geplante Aufgabe auf {{ $labels.geraet }}"
+
+      - alert: SchattenkopienGeloescht
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events"} |~ "(?i)vssadmin.*delete.*shadows|wbadmin.*delete.*catalog|Delete-VolumeShadowCopy" [5m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Verschluesselungstrojaner" }
+        annotations:
+          summary: "VORSICHT: Schattenkopien auf {{ $labels.geraet }} werden geloescht"
+          description: >-
+            Das ist der typischste Vorbereitungsschritt eines Verschluesselungs-
+            trojaners direkt vor der Verschluesselung. Geraet SOFORT vom Netz
+            trennen und Datensicherung pruefen.
+
+  # ================================================================== #
+  # Verdaechtige Ausfuehrung
+  # ================================================================== #
+  - name: security-ausfuehrung
+    interval: 1m
+    rules:
+
+      - alert: VerdaechtigePowerShell
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events"}
+              |~ "(?i)-enc(odedcommand)?\\s|FromBase64String|DownloadString|IEX\\s*\\(|Invoke-Expression|-w\\s+hidden|-nop\\s" [5m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Ausfuehrung" }
+        annotations:
+          summary: "Verschleierte PowerShell-Befehle auf {{ $labels.geraet }}"
+          description: >-
+            Kodierte oder versteckte Befehle plus Nachladen aus dem Internet –
+            das Standardmuster von Schadsoftware.
+
+      - alert: MissbrauchteSystemwerkzeuge
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events"}
+              |~ "(?i)certutil.*-urlcache|bitsadmin.*/transfer|mshta\\s+http|regsvr32.*scrobj|rundll32.*javascript" [5m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Ausfuehrung" }
+        annotations:
+          summary: "Bordmittel werden auf {{ $labels.geraet }} zweckentfremdet"
+          description: >-
+            certutil, bitsadmin, mshta oder regsvr32 werden benutzt, um Dateien
+            nachzuladen bzw. Schutzmechanismen zu umgehen.
+
+      - alert: AngriffswerkzeugErkannt
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events"}
+              |~ "(?i)mimikatz|sekurlsa|lazagne|psexesvc|bloodhound|sharphound|rubeus|cobaltstrike|winPEAS" [5m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Zugangsdaten stehlen" }
+        annotations:
+          summary: "Bekanntes Angriffswerkzeug auf {{ $labels.geraet }}"
+          description: "Geraet isolieren und den Vorfall dokumentieren."
+
+      - alert: SchadsoftwareGefunden
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Defender"} |~ "\"event_id\":111[67]" [5m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Schadsoftware" }
+        annotations:
+          summary: "Defender meldet Schadsoftware auf {{ $labels.geraet }}"
+          description: "In Grafana im Security-Dashboard nachsehen, was gefunden wurde und ob es bereinigt ist."
+
+      - alert: SchutzfunktionAbgeschaltet
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Defender"} |~ "\"event_id\":(5001|5010|5012|1006)" [5m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Schutz umgehen" }
+        annotations:
+          summary: "Virenschutz auf {{ $labels.geraet }} wurde deaktiviert"
+          description: "Entweder unerlaubt durch einen Benutzer oder durch Schadsoftware."
+
+      - alert: VieleAusfuehrungenAusTempVerzeichnis
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events"} |~ "(?i)\\\\(AppData\\\\Local\\\\Temp|Windows\\\\Temp|Users\\\\Public)\\\\[^\\\\]+\\.(exe|scr|ps1|js|vbs)" [10m])
+          ) > 5
+        labels: { severity: warning, kategorie: security, taktik: "Ausfuehrung" }
+        annotations:
+          summary: "Mehrfach Programme aus temporaeren Ordnern auf {{ $labels.geraet }} gestartet"
+
+  # ================================================================== #
+  # Active Directory
+  # ================================================================== #
+  - name: security-active-directory
+    interval: 1m
+    rules:
+
+      - alert: KerberoastingVerdacht
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "4769" |= "0x17" [10m])
+          ) > 15
+        labels: { severity: critical, kategorie: security, taktik: "Zugangsdaten stehlen" }
+        annotations:
+          summary: "Kerberoasting-Muster auf {{ $labels.geraet }}"
+          description: >-
+            Viele Kerberos-Tickets mit schwacher RC4-Verschluesselung angefordert.
+            So werden Dienstkonto-Kennwoerter offline geknackt.
+
+      - alert: VerzeichnisdienstMassenzugriff
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "4662" [5m])
+          ) > 100
+        labels: { severity: warning, kategorie: security, taktik: "Erkundung" }
+        annotations:
+          summary: "Ungewoehnlich viele Verzeichnisdienst-Zugriffe auf {{ $labels.geraet }}"
+          description: "Kann eine AD-Replikation (DCSync) durch einen Angreifer sein."
+
+      - alert: GruppenrichtlinieGeaendert
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="windows_events", channel="Security"} |= "5136" [5m])
+          ) > 0
+        labels: { severity: info, kategorie: security }
+        annotations:
+          summary: "Verzeichnisobjekt/Gruppenrichtlinie auf {{ $labels.geraet }} geaendert"
+
+  # ================================================================== #
+  # FortiGate
+  # ================================================================== #
+  - name: security-fortigate
+    interval: 1m
+    rules:
+
+      - alert: FortiGateAngriffBlockiert
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="syslog", quelle="fortigate"} |= "type=\"utm\"" |= "subtype=\"ips\"" |~ "severity=\"(high|critical)\"" [5m])
+          ) > 5
+        labels: { severity: warning, kategorie: security, taktik: "Angriff von aussen" }
+        annotations:
+          summary: "FortiGate blockiert {{ $value | printf \"%.0f\" }} schwere Angriffe in 5 Minuten"
+          description: "Im Security-Dashboard nachsehen, welche Quelle und welches Ziel betroffen sind."
+
+      - alert: FortiGateAngriffNichtBlockiert
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="syslog", quelle="fortigate"} |= "subtype=\"ips\"" |~ "severity=\"(high|critical)\"" |= "action=\"detected\"" [5m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Angriff von aussen" }
+        annotations:
+          summary: "Schwerer Angriff von der FortiGate nur erkannt, nicht blockiert"
+          description: "IPS-Profil steht auf 'monitor' statt 'block'. Regel nachschaerfen."
+
+      - alert: FortiGateSchadsoftwareImNetz
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="syslog", quelle="fortigate"} |= "subtype=\"virus\"" [10m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Schadsoftware" }
+        annotations:
+          summary: "FortiGate meldet Schadsoftware im Datenverkehr"
+          description: "Betroffenen Rechner anhand der Quell-IP identifizieren und pruefen."
+
+      - alert: FortiGateBotnetzKontakt
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="syslog", quelle="fortigate"} |~ "botnet|Botnet|C&C|command-and-control" [10m])
+          ) > 0
+        labels: { severity: critical, kategorie: security, taktik: "Befehlsserver" }
+        annotations:
+          summary: "Ein Geraet im Schulnetz kontaktiert einen bekannten Befehlsserver"
+          description: >-
+            Sehr starkes Zeichen fuer eine aktive Infektion. Quell-IP im
+            Netzwerk-Dashboard nachschlagen und Geraet isolieren.
+
+      - alert: FortiGateAdminAnmeldungFehlgeschlagen
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="syslog", quelle="fortigate"} |= "logdesc=\"Admin login failed\"" [5m])
+          ) > 5
+        labels: { severity: critical, kategorie: security, taktik: "Zugangsdaten erraten" }
+        annotations:
+          summary: "Mehrfach fehlgeschlagene Firewall-Anmeldungen"
+          description: "Jemand versucht, auf die FortiGate-Verwaltung zu kommen."
+
+      - alert: FortiGateKonfigurationGeaendert
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="syslog", quelle="fortigate"} |= "type=\"event\"" |= "subtype=\"system\"" |~ "cfgpath|Configuration is changed" [5m])
+          ) > 0
+        labels: { severity: info, kategorie: security }
+        annotations:
+          summary: "FortiGate-Konfiguration wurde geaendert"
+          description: "Abgleichen, ob das eine geplante Aenderung war."
+
+      - alert: FortiGateVpnAnmeldeversuche
+        expr: |
+          sum by (geraet) (
+            count_over_time({job="syslog", quelle="fortigate"} |~ "subtype=\"vpn\"" |~ "failed|negotiate error" [10m])
+          ) > 20
+        labels: { severity: warning, kategorie: security, taktik: "Zugangsdaten erraten" }
+        annotations:
+          summary: "Viele fehlgeschlagene VPN-Anmeldungen"
+          description: "Angriff auf den Fernzugang. Mehrfaktor-Anmeldung dringend empfohlen."
+
+  # ================================================================== #
+  # Protokollfluss selbst ueberwachen
+  # ================================================================== #
+  - name: security-protokollfluss
+    interval: 5m
+    rules:
+
+      - alert: KeineWindowsProtokolleMehr
+        expr: |
+          sum(count_over_time({job="windows_events"}[30m])) < 1
+        for: 15m
+        labels: { severity: critical, kategorie: security }
+        annotations:
+          summary: "Es kommen keine Windows-Ereignisprotokolle mehr an"
+          description: >-
+            Entweder ist die Protokollierung ausgefallen oder jemand hat sie
+            gezielt abgeschaltet. Beides muss geprueft werden.
+
+      - alert: KeineFortiGateProtokolleMehr
+        expr: |
+          sum(count_over_time({job="syslog", quelle="fortigate"}[60m])) < 1
+        for: 30m
+        labels: { severity: warning, kategorie: security }
+        annotations:
+          summary: "Seit einer Stunde keine Protokolle von der FortiGate"
+          description: "Syslog-Einstellung auf der Firewall pruefen (Ziel, Port 1514/UDP)."

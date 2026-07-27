@@ -1,0 +1,261 @@
+---
+# Schul-Monitoring – kompletter Stack
+# Wird von bootstrap.sh gestartet. Alle Versionen/Geheimnisse kommen aus .env
+name: schulmonitoring
+
+x-logging: &standard-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-common: &common
+  restart: unless-stopped
+  logging: *standard-logging
+  environment:
+    TZ: ${TZ:-Europe/Vienna}
+
+services:
+
+  # ------------------------------------------------------------------ #
+  # Reverse Proxy – einziger Einstiegspunkt fuer Browser und Agenten
+  # ------------------------------------------------------------------ #
+  caddy:
+    <<: *common
+    image: ${CADDY_IMAGE}
+    container_name: mon-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      TZ: ${TZ:-Europe/Vienna}
+      MON_HOSTNAME: ${MON_HOSTNAME}
+      LOKI_BASICAUTH_HASH: ${LOKI_BASICAUTH_HASH}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - grafana
+      - registrar
+      - loki
+
+  # ------------------------------------------------------------------ #
+  # Metriken
+  # ------------------------------------------------------------------ #
+  prometheus:
+    <<: *common
+    image: ${PROMETHEUS_IMAGE}
+    container_name: mon-prometheus
+    user: "65534:65534"
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${METRIK_AUFBEWAHRUNG:-365d}
+      - --storage.tsdb.retention.size=${METRIK_MAX_GROESSE:-40GB}
+      - --web.enable-lifecycle
+      - --web.external-url=http://${MON_HOSTNAME}:9090/
+
+  alertmanager:
+    <<: *common
+    image: ${ALERTMANAGER_IMAGE}
+    container_name: mon-alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/vorlagen:/etc/alertmanager/vorlagen:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=http://${MON_HOSTNAME}:9093/
+
+  # ------------------------------------------------------------------ #
+  # Logs
+  # ------------------------------------------------------------------ #
+  loki:
+    <<: *common
+    image: ${LOKI_IMAGE}
+    container_name: mon-loki
+    user: "10001:10001"
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - ./loki/rules:/etc/loki/rules:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/loki-config.yml
+
+  # Server-seitiger Alloy: nimmt Syslog von FortiGate / UniFi entgegen
+  alloy:
+    <<: *common
+    image: ${ALLOY_IMAGE}
+    container_name: mon-alloy
+    ports:
+      - "1514:1514/udp"   # Syslog RFC3164 (FortiGate / UniFi Standard)
+      - "1515:1515/tcp"   # Syslog RFC5424
+    volumes:
+      - ./alloy/alloy-server.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+
+  # ------------------------------------------------------------------ #
+  # Visualisierung
+  # ------------------------------------------------------------------ #
+  grafana:
+    <<: *common
+    image: ${GRAFANA_IMAGE}
+    container_name: mon-grafana
+    environment:
+      TZ: ${TZ:-Europe/Vienna}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORT}
+      GF_SERVER_ROOT_URL: http://${MON_HOSTNAME}/
+      GF_USERS_DEFAULT_THEME: dark
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: ${TZ:-Europe/Vienna}
+      GF_DATE_FORMATS_FULL_DATE: "DD.MM.YYYY HH:mm:ss"
+      # Nach dem Anmelden soll sofort die Gesamtuebersicht dastehen,
+      # nicht die leere Startseite von Grafana.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/00-uebersicht.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+
+  # ------------------------------------------------------------------ #
+  # Registrierungs-Dienst: Agenten melden sich hier automatisch an,
+  # rendert Prometheus file_sd Targets + liefert Agent-Pakete aus
+  # ------------------------------------------------------------------ #
+  registrar:
+    <<: *common
+    build:
+      context: ./registrar
+    image: schulmonitoring/registrar:1.0
+    container_name: mon-registrar
+    environment:
+      TZ: ${TZ:-Europe/Vienna}
+      AGENT_TOKEN: ${AGENT_TOKEN}
+      MON_HOSTNAME: ${MON_HOSTNAME}
+      STANDORT: ${STANDORT:-Schule}
+      AGENT_TIMEOUT_TAGE: ${AGENT_TIMEOUT_TAGE:-30}
+      SNMP_MODUL_STANDARD: ${SNMP_MODUL_STANDARD:-if_mib}
+    volumes:
+      - ./prometheus/targets:/targets
+      - ./inventar:/inventar:ro
+      - ./dist:/dist:ro
+      - registrar-data:/state
+
+  # ------------------------------------------------------------------ #
+  # Exporter
+  # ------------------------------------------------------------------ #
+  node-exporter:
+    <<: *common
+    image: ${NODE_EXPORTER_IMAGE}
+    container_name: mon-node-exporter
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - --path.rootfs=/host
+      - --collector.systemd
+      - --collector.processes
+
+  cadvisor:
+    <<: *common
+    image: ${CADVISOR_IMAGE}
+    container_name: mon-cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+
+  # ICMP / TCP / HTTP Erreichbarkeitspruefung fuer alles im Netz
+  blackbox:
+    <<: *common
+    image: ${BLACKBOX_IMAGE}
+    container_name: mon-blackbox
+    cap_add:
+      - NET_RAW
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    command: --config.file=/etc/blackbox/blackbox.yml
+
+  # SNMP fuer UniFi Switches/APs, FortiGate Hardware-Sensoren, USV, Drucker
+  snmp:
+    <<: *common
+    image: ${SNMP_IMAGE}
+    container_name: mon-snmp
+    volumes:
+      - ./snmp/snmp-schule.yml:/etc/snmp_exporter/snmp-schule.yml:ro
+    command:
+      - --config.file=/etc/snmp_exporter/snmp.yml
+      - --config.file=/etc/snmp_exporter/snmp-schule.yml
+
+  # UniFi Controller: APs, Switches, Gateways, Clients
+  unpoller:
+    <<: *common
+    image: ${UNPOLLER_IMAGE}
+    container_name: mon-unpoller
+    environment:
+      TZ: ${TZ:-Europe/Vienna}
+      UP_INFLUXDB_DISABLE: "true"
+      UP_PROMETHEUS_DISABLE: "false"
+      UP_PROMETHEUS_HTTP_LISTEN: "0.0.0.0:9130"
+      UP_POLLER_DEBUG: "false"
+      UP_UNIFI_DYNAMIC: "false"
+      UP_UNIFI_DEFAULT_URL: ${UNIFI_URL}
+      UP_UNIFI_DEFAULT_USER: ${UNIFI_BENUTZER}
+      UP_UNIFI_DEFAULT_PASS: ${UNIFI_PASSWORT}
+      UP_UNIFI_DEFAULT_SITES: ${UNIFI_SITES:-all}
+      UP_UNIFI_DEFAULT_VERIFY_SSL: "false"
+      UP_UNIFI_DEFAULT_SAVE_SITES: "true"
+      UP_UNIFI_DEFAULT_SAVE_DPI: ${UNIFI_DPI:-false}
+      UP_UNIFI_DEFAULT_SAVE_IDS: ${UNIFI_IDS:-true}
+      UP_UNIFI_DEFAULT_SAVE_EVENTS: "true"
+      UP_UNIFI_DEFAULT_SAVE_ALARMS: "true"
+      UP_UNIFI_DEFAULT_SAVE_ANOMALIES: "true"
+    profiles: ["unifi"]
+
+  # FortiGate ueber REST-API (Ergaenzung zu SNMP)
+  fortigate-exporter:
+    <<: *common
+    image: ${FORTIGATE_EXPORTER_IMAGE}
+    container_name: mon-fortigate
+    volumes:
+      - ./fortigate/fortigate-key.yaml:/config/fortigate-key.yaml:ro
+    command:
+      - -auth-file=/config/fortigate-key.yaml
+      - -listen=:9710
+      - -insecure=${FORTIGATE_INSECURE:-true}
+    profiles: ["fortigate"]
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  loki-data:
+  grafana-data:
+  alloy-data:
+  registrar-data:
+  caddy-data:
+  caddy-config:

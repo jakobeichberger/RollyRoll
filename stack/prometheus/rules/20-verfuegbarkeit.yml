@@ -1,0 +1,117 @@
+---
+groups:
+
+  - name: verfuegbarkeit
+    rules:
+
+      - alert: AgentMeldetSichNicht
+        expr: up{job=~"windows|linux"} == 0
+        for: 10m
+        labels: { severity: warning, kategorie: verfuegbarkeit }
+        annotations:
+          summary: "Kein Kontakt zum Agenten auf {{ $labels.geraet }}"
+          description: >-
+            Der Monitoring-Agent antwortet seit 10 Minuten nicht.
+            Geraet ausgeschaltet, Dienst gestoppt oder Firewall blockiert Port 9182.
+
+      - alert: ServerNichtErreichbar
+        expr: up{job="windows", rolle="server"} == 0
+        for: 5m
+        labels: { severity: critical, kategorie: verfuegbarkeit }
+        annotations:
+          summary: "Server {{ $labels.geraet }} antwortet nicht mehr"
+          description: "Seit 5 Minuten kein Kontakt. Sofort pruefen."
+
+      - alert: GeraetNichtErreichbar
+        expr: probe_success{job="erreichbarkeit-icmp"} == 0
+        for: 5m
+        labels: { severity: warning, kategorie: verfuegbarkeit }
+        annotations:
+          summary: "{{ $labels.geraet }} ({{ $labels.geraet_adresse }}) antwortet nicht auf Ping"
+          description: "Typ: {{ $labels.typ }}, Raum: {{ $labels.raum }}"
+
+      - alert: WichtigesGeraetNichtErreichbar
+        expr: probe_success{job="erreichbarkeit-icmp", kritisch="ja"} == 0
+        for: 2m
+        labels: { severity: critical, kategorie: verfuegbarkeit }
+        annotations:
+          summary: "KRITISCH: {{ $labels.geraet }} ({{ $labels.geraet_adresse }}) ist offline"
+          description: "Als kritisch markiertes Geraet (Typ {{ $labels.typ }}) antwortet nicht mehr."
+
+      - alert: DienstNichtErreichbar
+        expr: probe_success{job="erreichbarkeit-dienste"} == 0
+        for: 5m
+        labels: { severity: critical, kategorie: verfuegbarkeit }
+        annotations:
+          summary: "Dienst {{ $labels.geraet }} ({{ $labels.ziel }}) antwortet nicht"
+          description: "Pruefung ueber Modul {{ $labels.modul }} fehlgeschlagen."
+
+      - alert: HohePingLaufzeit
+        expr: probe_duration_seconds{job="erreichbarkeit-icmp"} > 0.2
+        for: 15m
+        labels: { severity: warning, kategorie: netzwerk }
+        annotations:
+          summary: "Hohe Latenz zu {{ $labels.geraet }} ({{ $value | printf \"%.0f\" }} ms)"
+          description: "Netzwerkproblem oder ueberlastete Leitung."
+
+      - alert: ZertifikatLaeuftBaldAb
+        expr: probe_ssl_earliest_cert_expiry - time() < 21 * 24 * 3600
+        for: 1h
+        labels: { severity: warning, kategorie: zertifikate, vorwarnung: "ja" }
+        annotations:
+          summary: "TLS-Zertifikat von {{ $labels.ziel }} laeuft in {{ $value | humanizeDuration }} ab"
+          description: "Rechtzeitig erneuern, sonst brechen Dienste weg."
+
+      - alert: MonitoringZielFehlerhaft
+        expr: up{job!~"windows|linux"} == 0
+        for: 15m
+        labels: { severity: warning, kategorie: monitoring }
+        annotations:
+          summary: "Monitoring-Ziel {{ $labels.job }} ({{ $labels.instance }}) nicht erreichbar"
+          description: "Teil der Ueberwachung faellt aus – Konfiguration oder Dienst pruefen."
+
+      - alert: PrometheusZielverlust
+        expr: |
+          count(up{job="windows"} == 1)
+          < 0.7 * count(up{job="windows"})
+        for: 15m
+        labels: { severity: critical, kategorie: monitoring }
+        annotations:
+          summary: "Mehr als 30 % aller Windows-Agenten sind offline"
+          description: "Deutet auf ein Netzwerk- oder Infrastrukturproblem hin, nicht auf Einzelgeraete."
+
+  - name: monitoring-selbstueberwachung
+    rules:
+
+      - alert: KeineNeuenAgenten
+        expr: schule_agenten_gesamt == 0
+        for: 30m
+        labels: { severity: warning, kategorie: monitoring }
+        annotations:
+          summary: "Es hat sich noch kein Agent registriert"
+          description: "GPO-Rollout pruefen: Skript, Token und Erreichbarkeit des Servers."
+
+      - alert: AgentVeraltet
+        expr: schule_agent_version_alt > 0
+        for: 6h
+        labels: { severity: info, kategorie: monitoring }
+        annotations:
+          summary: "{{ $value }} Agenten laufen mit einer alten Version"
+          description: "Beim naechsten Neustart aktualisieren sich die Clients automatisch."
+
+      - alert: PrometheusRegelnFehlerhaft
+        expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+        labels: { severity: warning, kategorie: monitoring }
+        annotations:
+          summary: "Prometheus kann Regeln nicht auswerten"
+          description: "Regelgruppe {{ $labels.rule_group }} schlaegt fehl."
+
+      - alert: SpeicherplatzMonitoringServer
+        expr: |
+          100 * node_filesystem_avail_bytes{mountpoint="/"}
+          / node_filesystem_size_bytes{mountpoint="/"} < 15
+        for: 30m
+        labels: { severity: critical, kategorie: monitoring, vorwarnung: "ja" }
+        annotations:
+          summary: "Monitoring-Server hat nur noch {{ $value | printf \"%.0f\" }} % Speicher frei"
+          description: "Ohne Platz gehen Metriken und Logs verloren. Aufbewahrungszeit in .env kuerzen."

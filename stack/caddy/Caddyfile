@@ -1,0 +1,55 @@
+# Reverse Proxy fuer das Schul-Monitoring
+#
+#   http(s)://<server>/            -> Grafana (Dashboards)
+#   http(s)://<server>/mon/api/... -> Registrierungs-Dienst fuer Agenten
+#   http(s)://<server>/mon/dist/.. -> Agent-Pakete (MSI, Alloy, Skripte)
+#   http(s)://<server>/loki/...    -> Log-Annahme (Basic-Auth mit Agent-Token)
+#
+# Port 80 bleibt bewusst offen (ohne Zwangs-Redirect), damit Agenten ohne
+# Zertifikatsvertrauen funktionieren. HTTPS liegt parallel auf 443 mit einem
+# selbst signierten Zertifikat aus Caddys interner CA.
+
+{
+	admin off
+	auto_https disable_redirects
+}
+
+(gemeinsam) {
+	encode zstd gzip
+
+	# --- Agenten-Registrierung und Paket-Auslieferung -----------------
+	handle_path /mon/* {
+		reverse_proxy registrar:8000
+	}
+
+	# --- Log-Annahme von den Windows-Agenten --------------------------
+	handle /loki/* {
+		basic_auth {
+			agent {$LOKI_BASICAUTH_HASH}
+		}
+		reverse_proxy loki:3100
+	}
+
+	# --- Alles andere: Grafana ----------------------------------------
+	handle {
+		reverse_proxy grafana:3000
+	}
+
+	log {
+		output stdout
+		format console
+		level WARN
+	}
+}
+
+:80 {
+	import gemeinsam
+}
+
+# Parallel dazu HTTPS mit einem Zertifikat aus Caddys interner CA.
+# Der Browser zeigt beim ersten Aufruf eine Warnung – das Zertifikat laesst
+# sich aus /data im Caddy-Container holen und in der Domaene verteilen.
+https://{$MON_HOSTNAME} {
+	tls internal
+	import gemeinsam
+}

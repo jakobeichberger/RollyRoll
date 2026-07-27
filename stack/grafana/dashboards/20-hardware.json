@@ -1,0 +1,270 @@
+{
+  "uid": "schule-hardware",
+  "title": "Hardware & Vorwarnungen",
+  "description": "Alles, was auf einen bevorstehenden Ausfall hindeutet – bevor er passiert.",
+  "tags": ["schule", "hardware", "vorwarnung"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-7d", "to": "now" },
+  "annotations": { "list": [] },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Was demnächst ausfällt",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Datenträger mit S.M.A.R.T.-Ausfallvorhersage",
+      "description": "Die Platte meldet selbst, dass sie bald stirbt. Das ist die wertvollste Vorwarnung überhaupt – hier steht sie, bevor Daten weg sind.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "schule_datentraeger_ausfall_vorhersage > 0", "instant": true, "format": "table" }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "typ": true, "standort": true, "Value": true },
+            "renameByName": { "geraet": "Gerät", "modell": "Modell", "seriennummer": "Seriennummer", "rolle": "Rolle", "raum": "Raum" }
+          }
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "align": "auto", "filterable": true } }, "overrides": [] },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "fields": "" } }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "RAID-Verbünde außerhalb des Normalzustands",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "schule_raid_zustand > 0", "instant": true, "format": "table" }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "typ": true, "standort": true, "Value": true },
+            "renameByName": { "geraet": "Gerät", "controller": "Controller", "verbund": "Verbund", "zustand": "Zustand", "raum": "Raum" }
+          }
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "align": "auto", "filterable": true } }, "overrides": [] },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "fields": "" } }
+    },
+    {
+      "id": 3,
+      "type": "bargauge",
+      "title": "SSD-Verschleiß",
+      "description": "100 % bedeutet: die vom Hersteller garantierte Schreibmenge ist aufgebraucht.",
+      "gridPos": { "h": 9, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "topk(12, schule_datentraeger_verschleiss_prozent)", "instant": true, "legendFormat": "{{geraet}} · {{modell}}" }],
+      "options": {
+        "displayMode": "gradient", "orientation": "horizontal", "showUnfilled": true, "valueMode": "color",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "minVizWidth": 8, "minVizHeight": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100, "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "orange", "value": 80 }, { "color": "red", "value": 90 }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Temperaturen",
+      "gridPos": { "h": 9, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "schule_temperatur_celsius", "legendFormat": "{{geraet}} · {{sensor}}" },
+        { "refId": "B", "expr": "schule_datentraeger_temperatur_celsius", "legendFormat": "{{geraet}} · Platte {{modell}}" },
+        { "refId": "C", "expr": "fgHwSensorEntValue{fgHwSensorEntName=~\".*(TEMP|Temp|temp).*\"}", "legendFormat": "FortiGate · {{fgHwSensorEntName}}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "color": { "mode": "continuous-GrYlRd" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5, "showPoints": "never", "gradientMode": "scheme", "lineInterpolation": "smooth" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 85 }] }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Hardware-Fehlerereignisse (24 h)",
+      "description": "WHEA meldet korrigierte und unkorrigierbare Fehler von CPU, RAM oder PCIe. Auch korrigierte Fehler sind ein ernstes Warnzeichen.",
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "topk(8, schule_whea_fehler_24h > 0)", "instant": true, "legendFormat": "{{geraet}} · {{quelle}}" }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "auto", "orientation": "vertical"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] },
+          "noValue": "Keine Hardwarefehler – gut so"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "Speicherplatz-Vorhersage",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Laufwerke, die absehbar volllaufen",
+      "description": "Hochrechnung aus dem Verlauf der letzten zwölf Stunden. Negative Werte in der Vorhersage bedeuten: bis dahin ist die Platte voll.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sort(predict_linear(windows_logical_disk_free_bytes{volume!~\"HarddiskVolume.*\"}[12h], 7 * 24 * 3600))",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        { "id": "filterByValue", "options": { "filters": [{ "fieldName": "Value", "config": { "id": "lower", "options": { "value": 0 } } }], "match": "any", "type": "include" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "typ": true, "standort": true },
+            "renameByName": { "geraet": "Gerät", "volume": "Laufwerk", "rolle": "Rolle", "raum": "Raum", "Value": "Freier Platz in 7 Tagen" }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Freier Platz in 7 Tagen" },
+            "properties": [
+              { "id": "unit", "value": "bytes" },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "fields": "" } }
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Strom, Akku und Datensicherung",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "USV – Batterieladung und Last",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "upsAdvBatteryCapacity", "legendFormat": "{{geraet}} · Batterie" },
+        { "refId": "B", "expr": "upsAdvOutputLoad", "legendFormat": "{{geraet}} · Last" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never", "gradientMode": "opacity" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Datensicherungen",
+      "description": "Wann lief die letzte Sicherung und war sie erfolgreich?",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "schule_sicherung_alter_stunden", "instant": true, "format": "table" }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "typ": true, "standort": true, "rolle": true },
+            "renameByName": { "geraet": "Gerät", "auftrag": "Auftrag", "Value": "Stunden seit letzter Sicherung" }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Stunden seit letzter Sicherung" },
+            "properties": [
+              { "id": "unit", "value": "h" },
+              { "id": "decimals", "value": 1 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 26 }, { "color": "red", "value": 36 }] } }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "fields": "" } }
+    },
+    {
+      "id": 22,
+      "type": "table",
+      "title": "Zertifikate, die bald ablaufen",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sort(schule_zertifikat_ablauf_tage < 90)", "instant": true, "format": "table" }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "typ": true, "standort": true },
+            "renameByName": { "geraet": "Gerät", "betreff": "Zertifikat", "speicher": "Speicher", "Value": "Tage bis Ablauf" }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Tage bis Ablauf" },
+            "properties": [
+              { "id": "unit", "value": "d" },
+              { "id": "decimals", "value": 0 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 21 }, { "color": "green", "value": 45 }] } }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "fields": "" } }
+    }
+  ]
+}

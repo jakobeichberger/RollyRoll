@@ -1,0 +1,68 @@
+---
+modules:
+
+  # Standard-Erreichbarkeitspruefung fuer alles im Schulnetz
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+
+  # Offener TCP-Port (z. B. RDP 3389, SMB 445, SQL 1433)
+  tcp:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+
+  # Webdienst erreichbar und antwortet mit 2xx/3xx
+  http:
+    prober: http
+    timeout: 10s
+    http:
+      valid_status_codes: [200, 201, 204, 301, 302, 307, 308, 401, 403]
+      method: GET
+      preferred_ip_protocol: ip4
+      follow_redirects: true
+
+  # Webdienst mit HTTPS – liefert zusaetzlich die Zertifikatslaufzeit
+  https:
+    prober: http
+    timeout: 10s
+    http:
+      valid_status_codes: [200, 201, 204, 301, 302, 307, 308, 401, 403]
+      method: GET
+      preferred_ip_protocol: ip4
+      follow_redirects: true
+      fail_if_ssl: false
+      fail_if_not_ssl: true
+      tls_config:
+        insecure_skip_verify: true
+
+  # DNS-Aufloesung eines Domaenencontrollers pruefen
+  dns_schule:
+    prober: dns
+    timeout: 5s
+    dns:
+      transport_protocol: udp
+      preferred_ip_protocol: ip4
+      query_name: "schule.local"
+      query_type: "A"
+      valid_rcodes: ["NOERROR"]
+
+  # LDAP-Port eines Domaenencontrollers
+  ldap:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: ip4
+
+  # SMTP-Relay der Schule
+  smtp:
+    prober: tcp
+    timeout: 8s
+    tcp:
+      preferred_ip_protocol: ip4
+      query_response:
+        - expect: "^220"

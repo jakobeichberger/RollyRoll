@@ -1,0 +1,222 @@
+---
+# Netzwerk: UniFi Access Points und Switches, FortiGate, allgemeines SNMP.
+#
+# Hinweis: Der zuverlaessigste "Geraet ausgefallen"-Alarm fuer APs und Switches
+# ist die ICMP-Pruefung aus 20-verfuegbarkeit.yml – die funktioniert auch dann,
+# wenn der UniFi-Controller selbst Probleme hat. Die Regeln hier ergaenzen das
+# um Dinge, die nur Controller, SNMP oder die FortiGate-API wissen.
+groups:
+
+  - name: netzwerk-snmp
+    rules:
+
+      - alert: SnmpGeraetAntwortetNicht
+        expr: snmp_scrape_walk_duration_seconds == 0 or up{job="snmp"} == 0
+        for: 10m
+        labels: { severity: warning, kategorie: netzwerk }
+        annotations:
+          summary: "SNMP-Abfrage von {{ $labels.geraet }} schlaegt fehl"
+          description: "Community-String, SNMP-Version oder Erreichbarkeit pruefen."
+
+      - alert: SwitchportAusgefallen
+        expr: |
+          ifOperStatus{ifAlias!~"|.*[Ff]rei.*|.*[Uu]nused.*"} == 2
+          and ifAdminStatus == 1
+        for: 10m
+        labels: { severity: warning, kategorie: netzwerk }
+        annotations:
+          summary: "Port {{ $labels.ifName }} auf {{ $labels.geraet }} ist unten"
+          description: "Beschriftung: {{ $labels.ifAlias }}. Kabel, Gegenstelle oder SFP pruefen."
+
+      - alert: UplinkAusgefallen
+        expr: ifOperStatus{ifAlias=~".*[Uu]plink.*|.*[Tt]runk.*"} == 2 and ifAdminStatus == 1
+        for: 2m
+        labels: { severity: critical, kategorie: netzwerk }
+        annotations:
+          summary: "Uplink {{ $labels.ifName }} auf {{ $labels.geraet }} ausgefallen"
+          description: "Ganze Netzsegmente koennen davon abhaengen."
+
+      - alert: SchnittstelleFehlerhaft
+        expr: |
+          rate(ifInErrors[10m]) + rate(ifOutErrors[10m]) > 5
+        for: 20m
+        labels: { severity: warning, kategorie: netzwerk, vorwarnung: "ja" }
+        annotations:
+          summary: "Uebertragungsfehler auf {{ $labels.geraet }} Port {{ $labels.ifName }}"
+          description: >-
+            {{ $value | printf "%.1f" }} Fehler/s. Klassisch: defektes Kabel,
+            schlechte Steckverbindung, Duplex-Fehlanpassung oder sterbendes SFP.
+
+      - alert: SchnittstelleVerwirftPakete
+        expr: rate(ifInDiscards[10m]) + rate(ifOutDiscards[10m]) > 20
+        for: 20m
+        labels: { severity: warning, kategorie: netzwerk }
+        annotations:
+          summary: "Paketverluste auf {{ $labels.geraet }} Port {{ $labels.ifName }}"
+          description: "Meist Ueberlastung des Ports oder zu kleine Puffer."
+
+      - alert: SchnittstelleAmLimit
+        expr: |
+          8 * rate(ifHCInOctets[10m]) / (ifHighSpeed * 1000000) > 0.85
+          and ifHighSpeed > 0
+        for: 30m
+        labels: { severity: warning, kategorie: netzwerk, vorwarnung: "ja" }
+        annotations:
+          summary: "Port {{ $labels.ifName }} auf {{ $labels.geraet }} zu {{ $value | humanizePercentage }} ausgelastet"
+          description: "Leitung wird zum Engpass – Aufruestung oder Lastverteilung pruefen."
+
+      - alert: NetzwerkgeraetNeugestartet
+        expr: sysUpTime < 6000
+        for: 0m
+        labels: { severity: info, kategorie: netzwerk }
+        annotations:
+          summary: "{{ $labels.geraet }} wurde gerade neu gestartet"
+          description: "Bei haeufigen Neustarts: Netzteil, PoE-Budget oder Firmware pruefen."
+
+  - name: netzwerk-unifi
+    rules:
+
+      - alert: UnifiControllerNichtErreichbar
+        expr: up{job="unifi"} == 0
+        for: 10m
+        labels: { severity: warning, kategorie: netzwerk }
+        annotations:
+          summary: "UniFi-Controller wird nicht mehr abgefragt"
+          description: >-
+            unpoller kommt nicht an den Controller. Zugangsdaten, Erreichbarkeit
+            oder das lokale Monitoring-Konto pruefen.
+
+      - alert: AccessPointFunkkanalUeberlastet
+        expr: unpoller_radio_channel_utilization_total_ratio > 0.85
+        for: 30m
+        labels: { severity: warning, kategorie: wlan, vorwarnung: "ja" }
+        annotations:
+          summary: "Funkkanal auf {{ $labels.name }} zu {{ $value | humanizePercentage }} belegt"
+          description: >-
+            Radio {{ $labels.radio }}. In diesem Bereich wird das WLAN im Unterricht
+            spuerbar langsam. Kanalplanung oder zusaetzlichen AP pruefen.
+
+      - alert: AccessPointSehrVieleClients
+        expr: unpoller_radio_stations > 50
+        for: 20m
+        labels: { severity: warning, kategorie: wlan, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $value }} Geraete auf {{ $labels.name }} ({{ $labels.radio }})"
+          description: "Ein AP fuer eine ganze Klasse ist ueberlastet – Abdeckung nachbessern."
+
+      - alert: WlanZufriedenheitNiedrig
+        expr: unpoller_vap_satisfaction_ratio < 0.5 and unpoller_vap_satisfaction_stations > 3
+        for: 30m
+        labels: { severity: warning, kategorie: wlan }
+        annotations:
+          summary: "Schlechte WLAN-Qualitaet auf {{ $labels.name }} (SSID {{ $labels.vap }})"
+          description: "Zufriedenheit {{ $value | humanizePercentage }} – Empfang, Stoerquellen oder Kanal pruefen."
+
+      - alert: SwitchUebertragungsfehler
+        expr: rate(unpoller_switch_receive_errors_total[10m]) > 5
+        for: 20m
+        labels: { severity: warning, kategorie: netzwerk, vorwarnung: "ja" }
+        annotations:
+          summary: "Empfangsfehler auf UniFi-Switch {{ $labels.name }}"
+          description: "{{ $value | printf \"%.1f\" }} Fehler/s – Verkabelung pruefen."
+
+      - alert: PoeBudgetFastAusgeschoepft
+        expr: |
+          sum by (name) (unpoller_port_poe_watts) > 0.85 * max by (name) (unpoller_device_total_max_power > 0)
+        for: 15m
+        labels: { severity: warning, kategorie: netzwerk, vorwarnung: "ja" }
+        annotations:
+          summary: "PoE-Budget auf {{ $labels.name }} fast ausgeschoepft"
+          description: >-
+            Weitere Access Points oder Kameras starten dann nicht mehr
+            oder der Switch schaltet Ports ab.
+
+  - name: netzwerk-fortigate
+    rules:
+
+      - alert: FortiGateNichtErreichbar
+        expr: up{job="fortigate"} == 0
+        for: 5m
+        labels: { severity: critical, kategorie: firewall }
+        annotations:
+          summary: "FortiGate {{ $labels.geraet_adresse }} antwortet nicht auf API-Abfragen"
+          description: "API-Token, Trusted Host oder Erreichbarkeit pruefen."
+
+      - alert: FortiGateCpuHoch
+        expr: fortigate_cpu_usage_ratio > 0.85
+        for: 20m
+        labels: { severity: warning, kategorie: firewall, vorwarnung: "ja" }
+        annotations:
+          summary: "FortiGate-CPU bei {{ $value | humanizePercentage }}"
+          description: "Bei anhaltender Last bricht der Internetzugang der Schule ein."
+
+      - alert: FortiGateSpeicherHoch
+        expr: fortigate_memory_usage_ratio > 0.85
+        for: 20m
+        labels: { severity: warning, kategorie: firewall, vorwarnung: "ja" }
+        annotations:
+          summary: "FortiGate-Speicher bei {{ $value | humanizePercentage }}"
+          description: >-
+            Ab ca. 88 % geht die FortiGate in den Konservierungsmodus und
+            blockiert neue Verbindungen.
+
+      - alert: FortiGateKonservierungsmodus
+        expr: fortigate_memory_usage_ratio > 0.88
+        for: 5m
+        labels: { severity: critical, kategorie: firewall }
+        annotations:
+          summary: "FortiGate droht in den Konservierungsmodus zu gehen"
+          description: "Sofort pruefen – sonst kommt die Schule nicht mehr ins Internet."
+
+      - alert: FortiGateSchnittstelleUnten
+        expr: fortigate_interface_link_up == 0
+        for: 5m
+        labels: { severity: critical, kategorie: firewall }
+        annotations:
+          summary: "FortiGate-Schnittstelle {{ $labels.name }} ist unten"
+          description: "Beschreibung: {{ $labels.alias }}"
+
+      - alert: FortiGateWanAusfall
+        expr: fortigate_interface_link_up{name=~"wan.*|WAN.*|ppp.*"} == 0
+        for: 2m
+        labels: { severity: critical, kategorie: firewall }
+        annotations:
+          summary: "Internetleitung {{ $labels.name }} ausgefallen"
+
+      - alert: FortiGateVpnTunnelUnten
+        expr: fortigate_ipsec_tunnel_up == 0
+        for: 10m
+        labels: { severity: warning, kategorie: firewall }
+        annotations:
+          summary: "VPN-Tunnel {{ $labels.name }} ist unten"
+          description: "Standortkopplung oder Fernwartung betroffen."
+
+      - alert: FortiGateSchnittstellenfehler
+        expr: |
+          rate(fortigate_interface_receive_errors_total[10m])
+          + rate(fortigate_interface_transmit_errors_total[10m]) > 5
+        for: 20m
+        labels: { severity: warning, kategorie: firewall, vorwarnung: "ja" }
+        annotations:
+          summary: "Uebertragungsfehler auf FortiGate-Port {{ $labels.name }}"
+
+      # Hardware-Sensoren der FortiGate kommen ueber SNMP (Luefter, Temperatur, Netzteil)
+      - alert: FortiGateHardwareSensorAlarm
+        expr: fgHwSensorEntAlarmStatus == 1
+        for: 10m
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "FortiGate-Hardwarealarm: Sensor {{ $labels.fgHwSensorEntName }}"
+          description: >-
+            Die Firewall meldet einen Sensor ausserhalb des Normbereichs
+            (Luefter, Temperatur oder Netzteil). Geraet vor Ort pruefen.
+
+      - alert: FortiGateSitzungenSehrHoch
+        expr: fortigate_current_sessions > 0.85 * fortigate_max_sessions
+        for: 15m
+        labels: { severity: warning, kategorie: firewall, vorwarnung: "ja" }
+        annotations:
+          summary: "FortiGate nahe am Sitzungslimit"
+          description: >-
+            {{ $value | printf "%.0f" }} aktive Sitzungen. Haeufig ein Hinweis auf
+            eine Schadsoftware-Infektion oder Portscans im Schulnetz.

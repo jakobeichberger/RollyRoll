@@ -1,0 +1,79 @@
+---
+# Vorberechnete Werte – machen die Dashboards deutlich schneller,
+# weil nicht bei jedem Seitenaufruf ueber alle Geraete gerechnet wird.
+groups:
+
+  - name: aggregation-windows
+    interval: 30s
+    rules:
+
+      - record: schule:cpu_auslastung:prozent
+        expr: |
+          100 - (avg by (geraet, rolle, typ) (rate(windows_cpu_time_total{mode="idle"}[5m])) * 100)
+
+      - record: schule:speicher_auslastung:prozent
+        expr: |
+          100 * (1 - windows_memory_available_bytes / on (geraet) group_left ()
+            windows_cs_physical_memory_bytes)
+
+      - record: schule:datentraeger_belegt:prozent
+        expr: |
+          100 * (1 - windows_logical_disk_free_bytes / windows_logical_disk_size_bytes)
+
+      - record: schule:datentraeger_wartezeit:sekunden
+        expr: |
+          rate(windows_logical_disk_read_seconds_total[5m])
+          + rate(windows_logical_disk_write_seconds_total[5m])
+
+      - record: schule:netz_durchsatz:bytes_pro_sekunde
+        expr: |
+          sum by (geraet) (rate(windows_net_bytes_total[5m]))
+
+      - record: schule:laufzeit:sekunden
+        expr: time() - windows_system_system_up_time
+
+  - name: aggregation-linux
+    interval: 30s
+    rules:
+
+      - record: schule:linux_cpu_auslastung:prozent
+        expr: |
+          100 - (avg by (geraet) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+      - record: schule:linux_speicher_auslastung:prozent
+        expr: |
+          100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+
+  - name: aggregation-uebersicht
+    interval: 60s
+    rules:
+
+      - record: schule:geraete_online:anzahl
+        expr: count(up{job=~"windows|linux"} == 1) or vector(0)
+
+      - record: schule:geraete_offline:anzahl
+        expr: count(up{job=~"windows|linux"} == 0) or vector(0)
+
+      - record: schule:server_online:anzahl
+        expr: count(up{job="windows", rolle="server"} == 1) or vector(0)
+
+      - record: schule:clients_online:anzahl
+        expr: count(up{job="windows", rolle="client"} == 1) or vector(0)
+
+      - record: schule:netzgeraete_offline:anzahl
+        expr: count(probe_success{job="erreichbarkeit-icmp"} == 0) or vector(0)
+
+      - record: schule:hardwareprobleme:anzahl
+        expr: |
+          (count(schule_datentraeger_ausfall_vorhersage > 0) or vector(0))
+          + (count(schule_raid_zustand > 0) or vector(0))
+          + (count(schule_datentraeger_zustand > 0) or vector(0))
+          + (count(schule_netzteil_zustand > 0) or vector(0))
+
+      - record: schule:offene_alarme:anzahl
+        expr: |
+          sum(ALERTS{alertstate="firing"}) or vector(0)
+
+      - record: schule:offene_alarme_kritisch:anzahl
+        expr: |
+          sum(ALERTS{alertstate="firing", severity="critical"}) or vector(0)

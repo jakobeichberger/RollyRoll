@@ -1,0 +1,104 @@
+---
+# Vorlage. bootstrap.sh erzeugt daraus alertmanager.yml und setzt die
+# Werte aus .env ein. Aenderungen bitte hier vornehmen, nicht in der
+# erzeugten Datei.
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: "${SMTP_HOST}:${SMTP_PORT}"
+  smtp_from: "${SMTP_VON}"
+  smtp_require_tls: ${SMTP_TLS}
+  smtp_auth_username: "${SMTP_BENUTZER}"
+  smtp_auth_password: "${SMTP_PASSWORT}"
+
+templates:
+  - /etc/alertmanager/vorlagen/*.tmpl
+
+route:
+  receiver: standard
+  group_by: [alertname, geraet, kategorie]
+  group_wait: 45s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+
+    # Sicherheitsvorfaelle gehen sofort und ungebuendelt raus
+    - matchers: [kategorie = security]
+      receiver: security
+      group_by: [alertname, geraet]
+      group_wait: 10s
+      group_interval: 2m
+      repeat_interval: 4h
+      continue: false
+
+    # Kritische Stoerungen: schnell, aber gebuendelt
+    - matchers: [severity = critical]
+      receiver: kritisch
+      group_wait: 20s
+      group_interval: 3m
+      repeat_interval: 3h
+
+    # Reine Hinweise sammeln wir und schicken sie selten
+    - matchers: [severity = info]
+      receiver: hinweise
+      group_wait: 5m
+      group_interval: 30m
+      repeat_interval: 7d
+
+inhibit_rules:
+  # Wenn ein Geraet komplett offline ist, nicht zusaetzlich ueber jeden
+  # einzelnen Dienst darauf meckern
+  - source_matchers: [alertname = ServerNichtErreichbar]
+    target_matchers: [severity =~ "warning|info"]
+    equal: [geraet]
+
+  - source_matchers: [alertname = AgentMeldetSichNicht]
+    target_matchers: [kategorie =~ "dienste|kapazitaet|leistung"]
+    equal: [geraet]
+
+  # Kritisch schlaegt Warnung fuer denselben Alarm am selben Geraet
+  - source_matchers: [severity = critical]
+    target_matchers: [severity = warning]
+    equal: [alertname, geraet]
+
+  # Faellt der ganze Switch aus, nicht ueber jeden Port einzeln alarmieren
+  - source_matchers: [alertname = WichtigesGeraetNichtErreichbar]
+    target_matchers: [kategorie = netzwerk]
+    equal: [geraet]
+
+receivers:
+
+  - name: standard
+    email_configs:
+      - to: "${ALARM_EMPFAENGER}"
+        send_resolved: true
+        headers:
+          Subject: '{{ template "betreff" . }}'
+        html: '{{ template "email.schule.html" . }}'
+#WEBHOOK#
+
+  - name: kritisch
+    email_configs:
+      - to: "${ALARM_EMPFAENGER_KRITISCH}"
+        send_resolved: true
+        headers:
+          Subject: '{{ template "betreff" . }}'
+        html: '{{ template "email.schule.html" . }}'
+#WEBHOOK#
+
+  - name: security
+    email_configs:
+      - to: "${ALARM_EMPFAENGER_SECURITY}"
+        send_resolved: true
+        headers:
+          Subject: '{{ template "betreff" . }}'
+        html: '{{ template "email.schule.html" . }}'
+#WEBHOOK#
+
+  - name: hinweise
+    email_configs:
+      - to: "${ALARM_EMPFAENGER}"
+        send_resolved: false
+        headers:
+          Subject: '{{ template "betreff" . }}'
+        html: '{{ template "email.schule.html" . }}'
+#WEBHOOK#

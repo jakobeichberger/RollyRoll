@@ -1,0 +1,146 @@
+// Serverseitiger Alloy.
+// Nimmt Syslog von FortiGate, UniFi und anderen Netzgeraeten entgegen,
+// zerlegt die Meldungen und schiebt sie nach Loki.
+//
+// FortiGate:  config log syslogd setting -> server = <Monitoring-IP>, port 1514, UDP
+// UniFi:      Einstellungen -> System -> Remote Logging -> <Monitoring-IP>:1514
+
+logging {
+  level  = "warn"
+  format = "logfmt"
+}
+
+// ---------------------------------------------------------------- //
+// Ziel: Loki
+// ---------------------------------------------------------------- //
+loki.write "zentral" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// ---------------------------------------------------------------- //
+// Syslog-Empfang
+// ---------------------------------------------------------------- //
+loki.source.syslog "netzwerk" {
+  listener {
+    address               = "0.0.0.0:1514"
+    protocol              = "udp"
+    syslog_format         = "rfc3164"
+    use_incoming_timestamp = true
+    labels                = { job = "syslog", empfang = "udp1514" }
+  }
+
+  listener {
+    address               = "0.0.0.0:1515"
+    protocol              = "tcp"
+    syslog_format         = "rfc5424"
+    use_incoming_timestamp = true
+    labels                = { job = "syslog", empfang = "tcp1515" }
+  }
+
+  relabel_rules = loki.relabel.syslog_absender.rules
+  forward_to    = [loki.process.netzwerk.receiver]
+}
+
+// Absender-Adresse und Hostname aus den Syslog-Metadaten in Labels heben
+loki.relabel "syslog_absender" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__syslog_message_hostname"]
+    target_label  = "geraet"
+  }
+  rule {
+    source_labels = ["__syslog_connection_ip_address"]
+    target_label  = "absender_ip"
+  }
+  rule {
+    source_labels = ["__syslog_message_severity"]
+    target_label  = "syslog_stufe"
+  }
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    target_label  = "anwendung"
+  }
+}
+
+// ---------------------------------------------------------------- //
+// Aufbereitung: Hersteller erkennen und FortiGate-Felder zerlegen
+// ---------------------------------------------------------------- //
+loki.process "netzwerk" {
+  forward_to = [loki.write.zentral.receiver]
+
+  // FortiGate-Meldungen erkennt man zuverlaessig an "devname=" + "logid="
+  stage.match {
+    selector = `{job="syslog"} |= "devname=" |= "logid="`
+
+    stage.static_labels {
+      values = { quelle = "fortigate" }
+    }
+
+    // FortiGate schreibt key="value" – logfmt kommt damit zurecht
+    stage.logfmt {
+      mapping = {
+        fg_typ      = "type",
+        fg_untertyp = "subtype",
+        fg_stufe    = "level",
+        fg_aktion   = "action",
+        fg_geraet   = "devname",
+        fg_quelle   = "srcip",
+        fg_ziel     = "dstip",
+        fg_angriff  = "attack",
+        fg_dienst   = "service",
+        fg_benutzer = "user",
+        fg_schwere  = "severity",
+      }
+    }
+
+    // Nur wenige, gut begrenzte Felder werden echte Labels
+    stage.labels {
+      values = {
+        fg_typ      = "",
+        fg_untertyp = "",
+        fg_stufe    = "",
+        fg_aktion   = "",
+      }
+    }
+
+    // Der Rest wird als strukturierte Metadaten mitgegeben – abfragbar,
+    // aber ohne die Anzahl der Datenstroeme aufzublaehen
+    stage.structured_metadata {
+      values = {
+        quell_ip    = "fg_quelle",
+        ziel_ip     = "fg_ziel",
+        angriff     = "fg_angriff",
+        benutzer    = "fg_benutzer",
+        schweregrad = "fg_schwere",
+      }
+    }
+  }
+
+  // UniFi-Geraete melden sich mit ihrer MAC im Prozessnamen
+  stage.match {
+    selector = `{job="syslog"} |~ "hostapd|libubnt|unifi|mca-ctrl|syswrapper"`
+    stage.static_labels {
+      values = { quelle = "unifi" }
+    }
+  }
+
+  // Alles Uebrige sauber kennzeichnen, damit nichts unbeschriftet bleibt
+  stage.match {
+    selector = `{job="syslog", quelle=""}`
+    stage.static_labels {
+      values = { quelle = "sonstiges" }
+    }
+  }
+
+  // Zu grosse Zeilen kuerzen
+  stage.drop {
+    longer_than = "128kb"
+  }
+}
+
+// Die eigenen Betriebsmetriken von Alloy liegen unter
+// http://alloy:12345/metrics und werden direkt von Prometheus abgeholt
+// (Job "alloy" in prometheus.yml).
