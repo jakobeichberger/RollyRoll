@@ -119,7 +119,33 @@ Fundliste heraus; doppelt überwacht wird nie.
 Nebeneffekt fürs Auge: Ein unbekanntes Gerät, das im Servernetz auftaucht,
 löst eine Meldung aus.
 
+Aus den LLDP-Nachbarschaftstabellen entsteht dazu der **Netzplan** – welcher AP
+an welchem Switchport, welcher Switch an welchem Uplink. Fällt eine Strecke
+aus, sieht man sofort, was dahinter liegt.
+
 → [docs/10-geraeteerkennung.md](docs/10-geraeteerkennung.md)
+
+### Active Directory
+
+Nicht nur „läuft der Dienst" – der läuft auch dann noch, wenn sich niemand mehr
+anmelden kann. Geprüft werden **Replikation** zwischen den Domänencontrollern,
+**SYSVOL/DFSR** (klemmt das, kommen keine Gruppenrichtlinien mehr an – auch das
+Agent-Skript nicht), die **FSMO-Rollen**, die **LDAP-Antwortzeit** als
+Frühindikator für langsame Anmeldungen und **Kontosperrungen** als
+Angriffsanzeichen.
+
+Läuft ausschließlich auf Domänencontrollern, richtet sich selbst ein.
+
+→ [docs/11-verzeichnisdienst.md](docs/11-verzeichnisdienst.md)
+
+### Konfigurationssicherung
+
+Jede Nacht werden FortiGate und UniFi-Controller ausgelesen und in einem
+Git-Verzeichnis abgelegt. Stirbt ein Gerät, steht der letzte Stand bereit.
+Und jede Änderung wird sichtbar: Kommt nachts um drei eine Firewall-Regel
+dazu, die niemand angelegt hat, ist das ein Befund.
+
+→ [docs/12-konfigurationssicherung.md](docs/12-konfigurationssicherung.md)
 
 ---
 
@@ -163,7 +189,8 @@ Lizenzkosten, alle Daten bleiben in der Schule.
 | **Sicherheit & Angriffserkennung** | Anmeldeversuche, verdächtige Befehle, Firewall-Vorfälle |
 | **Sicherheits-Baseline** | Sind die Geräte überhaupt richtig eingestellt? Erfüllungsgrad je Gerät und Bereich |
 | **Hardware-Leistung & Protokolle** | Antwortzeiten, Fehlerzähler und die Hardware-Meldungen im Klartext |
-| **Geräteerkennung** | Was im Netz gefunden wurde und was davon noch keinen richtigen Namen hat |
+| **Geräteerkennung** | Was im Netz gefunden wurde, was noch keinen richtigen Namen hat, und der Netzplan |
+| **Active Directory – Betrieb** | Replikation, SYSVOL, FSMO, Anmeldegeschwindigkeit |
 
 ---
 
@@ -190,7 +217,9 @@ docs/       Anleitungen
 | [06-security-monitoring.md](docs/06-security-monitoring.md) | Angriffserkennung und Audit-Einstellungen |
 | [07-betrieb.md](docs/07-betrieb.md) | Sicherung, Updates, Kapazität |
 | [09-hardware.md](docs/09-hardware.md) | Hardware-Protokolle, Leistungs- und Fehlerdaten |
-| [10-geraeteerkennung.md](docs/10-geraeteerkennung.md) | Geräte im Netz automatisch finden und übernehmen |
+| [10-geraeteerkennung.md](docs/10-geraeteerkennung.md) | Geräte im Netz automatisch finden, Netzplan aus LLDP |
+| [11-verzeichnisdienst.md](docs/11-verzeichnisdienst.md) | Active Directory im Betrieb: Replikation, SYSVOL, FSMO |
+| [12-konfigurationssicherung.md](docs/12-konfigurationssicherung.md) | Nächtliche Sicherung von FortiGate und UniFi |
 | [08-fehlersuche.md](docs/08-fehlersuche.md) | Wenn etwas nicht läuft |
 
 ---

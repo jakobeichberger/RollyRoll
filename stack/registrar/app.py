@@ -65,6 +65,11 @@ ERKENNUNG_NETZE = [
 ERKENNUNG_MODUS = os.environ.get("ERKENNUNG_MODUS", "automatisch").strip().lower()
 ERKENNUNG_INTERVALL_MINUTEN = int(os.environ.get("ERKENNUNG_INTERVALL_MINUTEN", "60"))
 ERKENNUNG_HOECHSTZAHL = int(os.environ.get("ERKENNUNG_HOECHSTZAHL", "4096"))
+# LLDP-Nachbarschaft mit abfragen: liefert den Netzplan, kostet aber je
+# Netzgeraet ein paar Sekunden.
+ERKENNUNG_LLDP = os.environ.get("ERKENNUNG_LLDP", "ja").strip().lower() in (
+    "ja", "true", "1", "yes"
+)
 SNMP_COMMUNITY = os.environ.get("SNMP_COMMUNITY", "public")
 UNIFI_URL = os.environ.get("UNIFI_URL", "")
 UNIFI_BENUTZER = os.environ.get("UNIFI_BENUTZER", "")
@@ -365,6 +370,7 @@ class Erkennungsverzeichnis:
 
     def __init__(self) -> None:
         self.funde: dict[str, dict] = {}
+        self.kanten: list[dict] = []
         self.letzter_lauf: float = 0.0
         self.letzte_dauer: float = 0.0
         self._laden()
@@ -375,15 +381,18 @@ class Erkennungsverzeichnis:
         try:
             gespeichert = json.loads(GEFUNDEN_ZUSTAND.read_text(encoding="utf-8"))
             self.funde = gespeichert.get("funde", {})
+            self.kanten = gespeichert.get("kanten", [])
             self.letzter_lauf = float(gespeichert.get("letzter_lauf", 0.0))
             log.info("%d fruehere Fundstuecke geladen", len(self.funde))
         except (OSError, ValueError) as fehler:
             log.error("Erkennungszustand nicht lesbar (%s) – beginne von vorn", fehler)
             self.funde = {}
+            self.kanten = []
 
     def _sichern(self) -> None:
         atomar_schreiben(GEFUNDEN_ZUSTAND, json.dumps(
-            {"funde": self.funde, "letzter_lauf": self.letzter_lauf},
+            {"funde": self.funde, "kanten": self.kanten,
+             "letzter_lauf": self.letzter_lauf},
             ensure_ascii=False, indent=2,
         ) + "\n")
 
@@ -551,6 +560,19 @@ def suchlauf_ausfuehren() -> int:
     dauer = time.monotonic() - beginn
     neu = erkennungsverzeichnis.uebernehmen(treffer, dauer)
 
+    # Netzplan: Wer haengt an welchem Port? Laeuft nach der Uebernahme,
+    # damit die Kanten schon die vergebenen Geraetenamen tragen.
+    if ERKENNUNG_LLDP:
+        try:
+            kanten = erkennung.topologie_erfassen(
+                erkennungsverzeichnis.liste(), SNMP_COMMUNITY
+            )
+            with _sperre:
+                erkennungsverzeichnis.kanten = kanten
+                erkennungsverzeichnis._sichern()
+        except Exception as fehler:      # Netzplan ist Beiwerk, nie ein Grund abzubrechen
+            log.warning("LLDP-Abfrage fehlgeschlagen: %s", fehler)
+
     erkennung_ziele_schreiben()
     gefunden_yml_schreiben()
 
@@ -692,6 +714,32 @@ def metriken() -> str:
       [f'schule_erkanntes_geraet_erste_sichtung_zeitstempel{{geraet="{f.get("name", "")}",'
        f'adresse="{f["ip"]}"}} {f.get("erste_sichtung", 0):.0f}' for f in funde])
 
+    # --- Netzplan aus LLDP -------------------------------------------- #
+    with _sperre:
+        kanten = list(erkennungsverzeichnis.kanten)
+
+    m("schule_lldp_verbindungen_gesamt", "Erfasste LLDP-Verbindungen", "gauge",
+      [f"schule_lldp_verbindungen_gesamt {len(kanten)}"])
+
+    def sauber(text: str) -> str:
+        return str(text).replace("\\", "").replace('"', "'")[:80]
+
+    m("schule_lldp_verbindung",
+      "Eine LLDP-Nachbarschaft: geraet/lokal_port haengt an nachbar/nachbar_port", "gauge",
+      [f'schule_lldp_verbindung{{geraet="{sauber(k["geraet"])}",'
+       f'adresse="{sauber(k["adresse"])}",lokal_port="{sauber(k["lokal_port"])}",'
+       f'nachbar="{sauber(k["nachbar"])}",nachbar_port="{sauber(k["nachbar_port"])}"}} 1'
+       for k in kanten])
+
+    # Wie viele Nachbarn meldet jedes Geraet? Faellt der Wert ploetzlich,
+    # ist eine Strecke weg – oft noch bevor ein Ping ausbleibt.
+    nach_geraet: dict[str, int] = {}
+    for k in kanten:
+        nach_geraet[k["geraet"]] = nach_geraet.get(k["geraet"], 0) + 1
+    m("schule_lldp_nachbarn", "Anzahl der LLDP-Nachbarn je Geraet", "gauge",
+      [f'schule_lldp_nachbarn{{geraet="{sauber(g)}"}} {n}'
+       for g, n in sorted(nach_geraet.items())])
+
     return "\n".join(zeilen) + "\n"
 
 
@@ -765,6 +813,22 @@ class Handler(BaseHTTPRequestHandler):
 
         if pfad == "/api/v1/agents":
             self._json(HTTPStatus.OK, {"agenten": verzeichnis.liste()})
+            return
+
+        if pfad == "/api/v1/topologie":
+            with _sperre:
+                kanten = list(erkennungsverzeichnis.kanten)
+            self._json(HTTPStatus.OK, {"verbindungen": kanten, "anzahl": len(kanten)})
+            return
+
+        # Derselbe Netzplan als Mermaid-Text – laesst sich in jede
+        # Dokumentation einbetten und in Grafana anzeigen.
+        if pfad == "/api/v1/topologie.mmd":
+            with _sperre:
+                kanten = list(erkennungsverzeichnis.kanten)
+            self._antwort(HTTPStatus.OK,
+                          erkennung.mermaid_diagramm(kanten).encode("utf-8"),
+                          "text/plain; charset=utf-8")
             return
 
         if pfad == "/api/v1/discovery":

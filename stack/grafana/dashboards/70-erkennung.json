@@ -340,6 +340,104 @@
           }
         ]
       }
+    },
+    {
+      "id": 110,
+      "type": "row",
+      "title": "Netzplan – was hängt woran",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 111,
+      "type": "stat",
+      "title": "Erfasste Verbindungen",
+      "description": "Aus den LLDP-Nachbarschaftstabellen der Switches. Jede Strecke erscheint zweimal, wenn beide Seiten LLDP sprechen.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 34 },
+      "targets": [
+        { "refId": "A", "expr": "schule_lldp_verbindungen_gesamt", "instant": true }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      }
+    },
+    {
+      "id": 112,
+      "type": "bargauge",
+      "title": "Nachbarn je Gerät",
+      "description": "Fällt dieser Wert plötzlich, ist eine Strecke weg – oft bevor ein Ping ausbleibt.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 4, "y": 34 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "schule_lldp_nachbarn",
+          "legendFormat": "{{geraet}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] }
+    },
+    {
+      "id": 113,
+      "type": "table",
+      "title": "Wer hängt an welchem Port",
+      "description": "Bei einem ausgefallenen Uplink zeigt diese Tabelle sofort, welche Geräte dahinter liegen – statt zu raten, warum ein ganzer Trakt offline ist.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 34 },
+      "targets": [
+        { "refId": "A", "expr": "schule_lldp_verbindung", "instant": true, "format": "table" }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "job": true,
+              "instance": true,
+              "adresse": true
+            },
+            "renameByName": {
+              "geraet": "Gerät",
+              "lokal_port": "Port",
+              "nachbar": "Dort hängt",
+              "nachbar_port": "dessen Port"
+            },
+            "indexByName": {
+              "geraet": 0,
+              "lokal_port": 1,
+              "nachbar": 2,
+              "nachbar_port": 3
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Gerät", "desc": false }]
+      },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left", "filterable": true } },
+        "overrides": []
+      }
     }
   ]
 }

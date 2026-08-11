@@ -27,7 +27,8 @@ Set-StrictMode -Version 1.0
 $ErrorActionPreference = 'Continue'
 
 $BasisPfad    = "$env:ProgramData\SchulMonitoring"
-$Aufgaben = @('SchulMonitoring-Hardwarepruefung', 'SchulMonitoring-Sicherheitspruefung')
+$Aufgaben = @('SchulMonitoring-Hardwarepruefung', 'SchulMonitoring-Sicherheitspruefung',
+              'SchulMonitoring-AdPruefung')
 
 function Melde { param([string]$Text) Write-Host "  $Text" -ForegroundColor Gray }
 

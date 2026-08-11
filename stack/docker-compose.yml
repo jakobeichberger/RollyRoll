@@ -161,6 +161,7 @@ services:
       ERKENNUNG_MODUS: ${ERKENNUNG_MODUS:-automatisch}
       ERKENNUNG_INTERVALL_MINUTEN: ${ERKENNUNG_INTERVALL_MINUTEN:-60}
       ERKENNUNG_HOECHSTZAHL: ${ERKENNUNG_HOECHSTZAHL:-4096}
+      ERKENNUNG_LLDP: ${ERKENNUNG_LLDP:-ja}
       SNMP_COMMUNITY: ${SNMP_COMMUNITY:-public}
       UNIFI_URL: ${UNIFI_URL:-}
       UNIFI_BENUTZER: ${UNIFI_BENUTZER:-}
@@ -188,6 +189,10 @@ services:
       - --path.rootfs=/host
       - --collector.systemd
       - --collector.processes
+      # Die Konfigurationssicherung legt ihre Messwerte hier ab. Das
+      # Wurzelverzeichnis ist ohnehin unter /host eingebunden, es braucht
+      # also keine zweite Einbindung.
+      - --collector.textfile.directory=/host/opt/schulmonitoring/textfile
 
   cadvisor:
     <<: *common

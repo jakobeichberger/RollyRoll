@@ -198,6 +198,183 @@ def _antwort_lesen(daten: bytes) -> dict[str, Any] | None:
         return None
 
 
+# --------------------------------------------------------------------- #
+# SNMP-Walk (GetBulk) – fuer Tabellen wie die LLDP-Nachbarschaft
+# --------------------------------------------------------------------- #
+def _getbulk_paket(community: str, oid: str, anfrage_nummer: int,
+                   wiederholungen: int = 25) -> bytes:
+    """
+    GetBulk hat denselben Aufbau wie GetRequest, nur bedeuten die beiden
+    Felder nach der Anfragenummer etwas anderes: Anzahl der nicht zu
+    wiederholenden Werte und maximale Wiederholungen. Damit holt man eine
+    ganze Tabellenspalte in wenigen Paketen statt in hundert.
+    """
+    pdu = (
+        _ganzzahl(anfrage_nummer)
+        + _ganzzahl(0)                  # non-repeaters
+        + _ganzzahl(wiederholungen)     # max-repetitions
+        + _tlv(0x30, _tlv(0x30, _oid_kodieren(oid) + _tlv(0x05, b"")))
+    )
+    nachricht = (
+        _ganzzahl(1)
+        + _tlv(0x04, community.encode("utf-8"))
+        + _tlv(0xA5, pdu)               # 0xA5 = GetBulkRequest
+    )
+    return _tlv(0x30, nachricht)
+
+
+def _antwort_varbinds(daten: bytes) -> list[tuple[str, Any]]:
+    """Wie _antwort_lesen, behaelt aber die Reihenfolge – die zaehlt beim Walk."""
+    try:
+        kennung, inhalt, _ = _tlv_lesen(daten, 0)
+        if kennung != 0x30:
+            return []
+        pos = 0
+        _, _, pos = _tlv_lesen(inhalt, pos)          # version
+        _, _, pos = _tlv_lesen(inhalt, pos)          # community
+        kennung, pdu, _ = _tlv_lesen(inhalt, pos)
+        if kennung != 0xA2:
+            return []
+        pos = 0
+        _, _, pos = _tlv_lesen(pdu, pos)             # request-id
+        _, _, pos = _tlv_lesen(pdu, pos)             # error-status
+        _, _, pos = _tlv_lesen(pdu, pos)             # error-index
+        _, bindungen, _ = _tlv_lesen(pdu, pos)
+
+        ergebnis: list[tuple[str, Any]] = []
+        pos = 0
+        while pos < len(bindungen):
+            _, bindung, pos = _tlv_lesen(bindungen, pos)
+            innen = 0
+            _, oid_roh, innen = _tlv_lesen(bindung, innen)
+            wert_kennung, wert_roh, _ = _tlv_lesen(bindung, innen)
+            ergebnis.append((_oid_lesen(oid_roh), _wert_lesen(wert_kennung, wert_roh)))
+        return ergebnis
+    except (ValueError, IndexError):
+        return []
+
+
+def snmp_walk(ip: str, community: str, basis_oid: str,
+              zeitlimit: float = 3.0, hoechstzahl: int = 500) -> dict[str, Any]:
+    """
+    Laeuft eine Tabellenspalte ab und liefert {oid: wert}.
+
+    Bricht ab, sobald die Antworten den Basisbereich verlassen, nichts
+    mehr dazukommt oder die Obergrenze erreicht ist. Letzteres ist die
+    Reissleine gegen Geraete, die im Kreis antworten.
+    """
+    ergebnis: dict[str, Any] = {}
+    aktuell = basis_oid
+    praefix = basis_oid + "."
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(zeitlimit)
+    try:
+        for runde in range(hoechstzahl):
+            try:
+                sock.sendto(_getbulk_paket(community, aktuell, runde + 1), (ip, 161))
+                daten, _ = sock.recvfrom(65535)
+            except (socket.timeout, OSError):
+                break
+
+            varbinds = _antwort_varbinds(daten)
+            if not varbinds:
+                break
+
+            neu = 0
+            for oid, wert in varbinds:
+                if not (oid == basis_oid or oid.startswith(praefix)):
+                    return ergebnis            # Bereich verlassen: fertig
+                if oid in ergebnis:
+                    continue
+                ergebnis[oid] = wert
+                aktuell = oid
+                neu += 1
+                if len(ergebnis) >= hoechstzahl:
+                    return ergebnis
+
+            if neu == 0:                        # kein Fortschritt mehr
+                break
+    finally:
+        sock.close()
+
+    return ergebnis
+
+
+# --------------------------------------------------------------------- #
+# LLDP: Wer haengt an welchem Port?
+# --------------------------------------------------------------------- #
+# LLDP-MIB. Die Zahlen sind fest, es muss keine MIB geladen werden.
+LLDP_ENTFERNT_SYSNAME = "1.0.8802.1.1.2.1.4.1.1.9"    # lldpRemSysName
+LLDP_ENTFERNT_PORTID  = "1.0.8802.1.1.2.1.4.1.1.7"    # lldpRemPortId
+LLDP_ENTFERNT_PORTBES = "1.0.8802.1.1.2.1.4.1.1.8"    # lldpRemPortDesc
+LLDP_LOKAL_PORTID     = "1.0.8802.1.1.2.1.3.7.1.3"    # lldpLocPortId
+LLDP_LOKAL_PORTBES    = "1.0.8802.1.1.2.1.3.7.1.4"    # lldpLocPortDesc
+
+
+def _lldp_index(oid: str, basis: str) -> str | None:
+    """
+    Aus der lldpRem-Tabelle den lokalen Port herausloesen. Der Index ist
+    dreiteilig: Zeitmarke, lokale Portnummer, laufende Nummer. Die
+    mittlere Zahl ist die gesuchte.
+    """
+    if not oid.startswith(basis + "."):
+        return None
+    rest = oid[len(basis) + 1:].split(".")
+    return rest[1] if len(rest) >= 2 else None
+
+
+def lldp_nachbarn(ip: str, community: str, zeitlimit: float = 3.0) -> list[dict[str, str]]:
+    """
+    Liest die Nachbarschaftstabelle eines Geraets aus.
+
+    Die Erkennung weiss, WAS es im Netz gibt. Das hier beantwortet die
+    andere Haelfte: was haengt woran. Bei einem ausgefallenen Uplink sieht
+    man damit sofort, welche Geraete dahinter liegen, statt zu raten.
+    """
+    sysnamen = snmp_walk(ip, community, LLDP_ENTFERNT_SYSNAME, zeitlimit)
+    if not sysnamen:
+        return []
+
+    portids = snmp_walk(ip, community, LLDP_ENTFERNT_PORTID, zeitlimit)
+    portbes = snmp_walk(ip, community, LLDP_ENTFERNT_PORTBES, zeitlimit)
+    lokale = snmp_walk(ip, community, LLDP_LOKAL_PORTID, zeitlimit)
+    lokale_bes = snmp_walk(ip, community, LLDP_LOKAL_PORTBES, zeitlimit)
+
+    # Lokale Portnummer -> lesbarer Portname
+    lokal_namen: dict[str, str] = {}
+    for quelle, basis in ((lokale_bes, LLDP_LOKAL_PORTBES), (lokale, LLDP_LOKAL_PORTID)):
+        for oid, wert in quelle.items():
+            nummer = oid.rsplit(".", 1)[-1]
+            text = str(wert or "").strip()
+            if text and nummer not in lokal_namen:
+                lokal_namen[nummer] = text
+
+    nachbarn: list[dict[str, str]] = []
+    for oid, name in sysnamen.items():
+        name = str(name or "").strip()
+        if not name:
+            continue
+        nummer = _lldp_index(oid, LLDP_ENTFERNT_SYSNAME)
+        if nummer is None:
+            continue
+        schwanz = oid[len(LLDP_ENTFERNT_SYSNAME) + 1:]
+
+        entfernt_port = str(
+            portbes.get(f"{LLDP_ENTFERNT_PORTBES}.{schwanz}")
+            or portids.get(f"{LLDP_ENTFERNT_PORTID}.{schwanz}")
+            or ""
+        ).strip()
+
+        nachbarn.append({
+            "lokal_port": lokal_namen.get(nummer, f"Port {nummer}"),
+            "entfernt_geraet": name,
+            "entfernt_port": entfernt_port,
+        })
+
+    return nachbarn
+
+
 def _adressen(netze: Iterable[str], hoechstzahl: int) -> list[str]:
     """Loest die konfigurierten Netze in Einzeladressen auf."""
     liste: list[str] = []
@@ -599,6 +776,97 @@ def namen_vorschlagen(fund: dict[str, Any], belegt: set[str]) -> str:
         name = f"{sauber[:55]}-{zaehler}"
         zaehler += 1
     return name
+
+
+# Nur bei diesen Geraetearten lohnt die LLDP-Abfrage. Ein Drucker oder
+# eine USV hat keine Nachbarschaftstabelle, und jede Abfrage kostet Zeit.
+LLDP_TYPEN = {"switch", "accesspoint", "gateway", "firewall"}
+
+
+def topologie_erfassen(
+    funde: Iterable[dict[str, Any]],
+    community: str,
+    zeitlimit: float = 3.0,
+) -> list[dict[str, str]]:
+    """
+    Fragt bei allen Netzgeraeten die LLDP-Nachbarschaft ab und liefert
+    eine Kantenliste.
+
+    Jede Verbindung taucht zweimal auf – einmal von jeder Seite. Das ist
+    Absicht: Meldet nur eine Seite die Verbindung, ist auf der anderen
+    LLDP aus, und genau das will man im Dashboard sehen koennen.
+    """
+    kanten: list[dict[str, str]] = []
+
+    for fund in funde:
+        if fund.get("quelle") != "snmp":
+            continue                      # ohne SNMP keine Abfrage moeglich
+        if fund.get("typ") not in LLDP_TYPEN:
+            continue
+
+        try:
+            nachbarn = lldp_nachbarn(fund["ip"], community, zeitlimit)
+        except OSError as fehler:
+            log.debug("LLDP-Abfrage an %s fehlgeschlagen: %s", fund["ip"], fehler)
+            continue
+
+        for nachbar in nachbarn:
+            kanten.append({
+                "geraet": fund.get("name") or fund.get("sysname") or fund["ip"],
+                "adresse": fund["ip"],
+                "lokal_port": nachbar["lokal_port"],
+                "nachbar": nachbar["entfernt_geraet"],
+                "nachbar_port": nachbar["entfernt_port"],
+            })
+
+    log.info("LLDP: %d Verbindungen erfasst", len(kanten))
+    return kanten
+
+
+def mermaid_diagramm(kanten: Iterable[dict[str, str]]) -> str:
+    """
+    Baut aus den Kanten einen Mermaid-Netzplan. Wird als Text
+    ausgeliefert und laesst sich in jede Dokumentation einbetten.
+
+    Doppelte Verbindungen (beide Seiten melden dieselbe Strecke) werden
+    zu einer Linie zusammengefasst.
+    """
+    def kennung(name: str) -> str:
+        sauber = "".join(z if z.isalnum() else "_" for z in name)
+        return sauber[:40] or "unbekannt"
+
+    knoten: dict[str, str] = {}
+    linien: list[str] = []
+    gesehen: set[frozenset] = set()
+
+    for kante in kanten:
+        a, b = kante["geraet"], kante["nachbar"]
+        if not a or not b:
+            continue
+        knoten[kennung(a)] = a
+        knoten[kennung(b)] = b
+
+        paar = frozenset((a, b))
+        if paar in gesehen:
+            continue
+        gesehen.add(paar)
+
+        beschriftung = kante.get("lokal_port", "")
+        if kante.get("nachbar_port"):
+            beschriftung = f"{beschriftung} – {kante['nachbar_port']}".strip(" –")
+        beschriftung = beschriftung.replace('"', "'")[:40]
+
+        if beschriftung:
+            linien.append(f'  {kennung(a)} ---|"{beschriftung}"| {kennung(b)}')
+        else:
+            linien.append(f"  {kennung(a)} --- {kennung(b)}")
+
+    if not linien:
+        return "graph TD\n  keine[Keine LLDP-Verbindungen gefunden]\n"
+
+    kopf = ["graph TD"]
+    kopf += [f'  {k}["{v}"]' for k, v in sorted(knoten.items())]
+    return "\n".join(kopf + linien) + "\n"
 
 
 def suchlauf(

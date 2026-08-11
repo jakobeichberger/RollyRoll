@@ -192,6 +192,53 @@ melden sich ohnehin per Gruppenrichtlinie selbst.
 
 ---
 
+## Netzplan aus LLDP
+
+Die Erkennung weiß, **was** es gibt. LLDP beantwortet die andere Hälfte:
+**was hängt woran**.
+
+Switches führen eine Nachbarschaftstabelle – welches Gerät an welchem Port
+steckt und wie dessen Gegenstelle heißt. Der Suchlauf liest sie bei allen
+Switches, Access Points und Gateways mit aus.
+
+Der praktische Nutzen ist nicht das hübsche Bild, sondern die Fehlersuche:
+Fällt ein Uplink aus, zeigt die Tabelle „Wer hängt an welchem Port" sofort,
+welche Geräte dahinter liegen — statt zu raten, warum plötzlich ein ganzer
+Trakt offline ist.
+
+Dazu ein Frühwarnwert: `schule_lldp_nachbarn` zählt die Nachbarn je Gerät.
+Fällt die Zahl, ist eine Strecke weg — oft **bevor** ein Ping ausbleibt, weil
+das Gerät dahinter noch über einen anderen Weg erreichbar ist.
+
+Abschalten lässt sich das mit `ERKENNUNG_LLDP=nein` in der `.env`. Es kostet je
+Switch ein paar Sekunden.
+
+Denselben Netzplan gibt es als Mermaid-Text, etwa für die eigene
+Dokumentation:
+
+```bash
+curl -s -H "X-Agent-Token: <Token>" http://localhost/mon/api/v1/topologie.mmd
+```
+
+```
+graph TD
+  sw_core_01["sw-core-01"]
+  sw_edv_saal_1["sw-edv-saal-1"]
+  ap_turnsaal["ap-turnsaal"]
+  sw_edv_saal_1 ---|"Port 24 Uplink – Port 12"| sw_core_01
+  sw_edv_saal_1 ---|"Port 5 – eth0"| ap_turnsaal
+```
+
+Jede Strecke erscheint zweimal, wenn beide Seiten LLDP sprechen. Das ist
+Absicht: Meldet nur eine Seite die Verbindung, ist auf der anderen LLDP
+abgeschaltet — und genau das sieht man dann.
+
+> Bei UniFi muss LLDP nicht eingeschaltet werden, es läuft von Haus aus. Die
+> Tabelle kommt aber nur über **SNMP** — Geräte, die nur der Controller kennt,
+> tauchen im Netzplan nicht auf.
+
+---
+
 ## Was die Erkennung nicht kann
 
 Sie findet **nur, was antwortet**. Ein Gerät ohne SNMP, das dem

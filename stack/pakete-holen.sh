@@ -62,7 +62,8 @@ fi
 # ---------------------------------------------------------------------
 melde "Agent-Skripte bereitstellen"
 for datei in Install-MonitoringAgent.ps1 Uninstall-MonitoringAgent.ps1 \
-             Collect-HardwareHealth.ps1 Collect-SecurityBaseline.ps1; do
+             Collect-HardwareHealth.ps1 Collect-SecurityBaseline.ps1 \
+             Collect-AdHealth.ps1; do
   if [[ -f "${PROJEKT_VERZEICHNIS}/agent/${datei}" ]]; then
     cp "${PROJEKT_VERZEICHNIS}/agent/${datei}" "${DIST}/${datei}"
     echo "      ${datei}"

@@ -269,6 +269,52 @@ EOF
 systemctl daemon-reload
 systemctl enable schulmonitoring.service >/dev/null 2>&1
 
+# --- Naechtliche Konfigurationssicherung der Netzgeraete --------------
+melde "Konfigurationssicherung einrichten"
+
+mkdir -p /opt/schulmonitoring/textfile /opt/schulmonitoring/konfig
+chmod 700 /opt/schulmonitoring/konfig
+chmod +x "${STACK_VERZEICHNIS}/konfig-sichern.sh"
+
+cat > /etc/systemd/system/schulmonitoring-konfig.service <<EOF
+[Unit]
+Description=Konfiguration der Netzgeraete sichern
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=${STACK_VERZEICHNIS}
+ExecStart=${STACK_VERZEICHNIS}/konfig-sichern.sh
+TimeoutStartSec=600
+EOF
+
+cat > /etc/systemd/system/schulmonitoring-konfig.timer <<'EOF'
+[Unit]
+Description=Naechtliche Konfigurationssicherung der Netzgeraete
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+# Nach einem Ausfall nachholen, statt einen Tag zu ueberspringen
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now schulmonitoring-konfig.timer >/dev/null 2>&1
+
+# Einmal sofort laufen lassen, damit gleich ein Ausgangsstand daliegt –
+# ohne den waere der erste Vergleich erst in der uebernaechsten Nacht.
+if [[ -n "${FORTIGATE_TOKEN:-}${UNIFI_PASSWORT:-}" ]]; then
+  systemctl start schulmonitoring-konfig.service >/dev/null 2>&1 || \
+    warne "Erste Konfigurationssicherung fehlgeschlagen – Details mit: journalctl -u schulmonitoring-konfig"
+else
+  echo "  Noch keine Zugangsdaten fuer FortiGate/UniFi – die Sicherung laeuft ab der ersten Nacht nach dem Eintrag."
+fi
+
 # ---------------------------------------------------------------------
 # 8. Warten, bis alles antwortet
 # ---------------------------------------------------------------------

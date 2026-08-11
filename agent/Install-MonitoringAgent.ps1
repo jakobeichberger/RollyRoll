@@ -65,7 +65,7 @@ $ProgressPreference = 'SilentlyContinue'
 # ===================================================================== #
 # Konstanten
 # ===================================================================== #
-$AgentVersion   = '1.2.0'
+$AgentVersion   = '1.3.0'
 $BasisPfad      = "$env:ProgramData\SchulMonitoring"
 $TextdateiPfad  = "$BasisPfad\textfile"
 $ProtokollPfad  = "$BasisPfad\logs"
@@ -73,6 +73,7 @@ $ArbeitsPfad    = "$BasisPfad\temp"
 $VersionsDatei  = "$BasisPfad\agent-version.txt"
 $AufgabenName   = 'SchulMonitoring-Hardwarepruefung'
 $AufgabeSicherheit = 'SchulMonitoring-Sicherheitspruefung'
+$AufgabeAd      = 'SchulMonitoring-AdPruefung'
 
 $ServerUrl = $ServerUrl.TrimEnd('/')
 
@@ -464,6 +465,71 @@ function Install-Sicherheitspruefung {
     Start-ScheduledTask -TaskName $AufgabeSicherheit -ErrorAction SilentlyContinue
 }
 
+function Install-AdPruefung {
+    <#
+        Betriebszustand des Active Directory: Replikation, SYSVOL, FSMO,
+        LDAP-Antwortzeit, Kontosperrungen.
+
+        Wird ausschliesslich auf Domaenencontrollern eingerichtet – auf
+        allen anderen Geraeten waere es sinnlose Last. Alle 15 Minuten:
+        Eine gebrochene Replikation will man nicht erst nach einer Stunde
+        sehen, oefter als alle 15 Minuten aendert sich der Zustand aber
+        auch nicht.
+    #>
+    param([Parameter(Mandatory)]$System)
+
+    if ($System.Rolle -ne 'dc') {
+        # Eine frueher eingerichtete Aufgabe entfernen, falls das Geraet
+        # einmal ein DC war und heruntergestuft wurde.
+        Unregister-ScheduledTask -TaskName $AufgabeAd -Confirm:$false -ErrorAction SilentlyContinue
+        return
+    }
+
+    $skriptZiel = Join-Path $BasisPfad 'Collect-AdHealth.ps1'
+
+    if (-not (Invoke-ServerAbruf -Pfad 'Collect-AdHealth.ps1' -Zieldatei $skriptZiel)) {
+        $daneben = Join-Path $PSScriptRoot 'Collect-AdHealth.ps1'
+        if (Test-Path -LiteralPath $daneben) {
+            Copy-Item -LiteralPath $daneben -Destination $skriptZiel -Force
+        } else {
+            Schreibe 'Collect-AdHealth.ps1 wurde nicht gefunden – die AD-Pruefung entfaellt.' -Art Warnung
+            return
+        }
+    }
+
+    Unblock-File -LiteralPath $skriptZiel -ErrorAction SilentlyContinue
+
+    $aktion = New-ScheduledTaskAction -Execute 'powershell.exe' `
+        -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$skriptZiel`" -AusgabePfad `"$TextdateiPfad`""
+
+    # Versatz auch hier: In einer Domaene mit mehreren DCs sollen die
+    # Replikationsabfragen nicht im Gleichschritt laufen.
+    $versatz = Get-Random -Minimum 0 -Maximum 14
+    $ausloeser = New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes($versatz) `
+        -RepetitionInterval (New-TimeSpan -Minutes 15)
+
+    $start = New-ScheduledTaskTrigger -AtStartup
+
+    $konto = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+
+    $einstellungen = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable -MultipleInstances IgnoreNew `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
+        -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 5)
+
+    Unregister-ScheduledTask -TaskName $AufgabeAd -Confirm:$false -ErrorAction SilentlyContinue
+
+    Register-ScheduledTask -TaskName $AufgabeAd `
+        -Action $aktion -Trigger @($ausloeser, $start) -Principal $konto `
+        -Settings $einstellungen `
+        -Description 'Prueft Replikation, SYSVOL, FSMO und LDAP fuer das Schul-Monitoring.' | Out-Null
+
+    Schreibe 'Geplante Aufgabe fuer die AD-Betriebspruefung eingerichtet' -Art Erfolg
+
+    Start-ScheduledTask -TaskName $AufgabeAd -ErrorAction SilentlyContinue
+}
+
 function Set-Firewallregel {
     $regelName = 'Schul-Monitoring – Metrikabruf'
 
@@ -577,6 +643,7 @@ try {
     Set-Firewallregel
     Install-Hardwarepruefung
     Install-Sicherheitspruefung
+    Install-AdPruefung -System $system
     Install-Alloy -System $system
     Register-BeimServer -System $system | Out-Null
 
