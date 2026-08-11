@@ -2,15 +2,57 @@
   "uid": "schule-baseline",
   "title": "Sicherheits-Baseline",
   "description": "Sind die Geräte so eingestellt, wie es empfohlen wird? Geprüft gegen CIS, BSI-Grundschutz und die Microsoft Security Baseline.",
-  "tags": ["schule", "security", "härtung"],
+  "tags": [
+    "schule",
+    "security",
+    "härtung"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "5m",
   "editable": true,
   "graphTooltip": 1,
-  "time": { "from": "now-30d", "to": "now" },
-  "annotations": { "list": [] },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Alarme",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "step": "60s",
+        "tagKeys": "severity,kategorie,geraet",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{geraet}} · {{severity}}",
+        "target": {
+          "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+          "refId": "Anno"
+        },
+        "useValueForTime": false
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
@@ -18,8 +60,14 @@
         "label": "Prüfung",
         "description": "Wählt aus, für welche Prüfung unten die betroffenen Geräte aufgelistet werden.",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": { "query": "label_values(schule_sicherheit_pruefung, pruefung)", "refId": "A" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(schule_sicherheit_pruefung, pruefung)",
+          "refId": "A"
+        },
         "refresh": 1,
         "sort": 1,
         "includeAll": false,
@@ -30,14 +78,23 @@
         "name": "rolle",
         "label": "Rolle",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": { "query": "label_values(schule_sicherheit_score_prozent, rolle)", "refId": "B" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(schule_sicherheit_score_prozent, rolle)",
+          "refId": "B"
+        },
         "refresh": 1,
         "sort": 1,
         "includeAll": true,
         "multi": true,
         "allValue": ".*",
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -46,7 +103,12 @@
       "id": 100,
       "type": "row",
       "title": "Wie gut steht die Schule da?",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "collapsed": false,
       "panels": []
     },
@@ -55,13 +117,31 @@
       "type": "gauge",
       "title": "Erfüllungsgrad",
       "description": "Anteil der Prüfungen, die über alle Geräte hinweg wie empfohlen eingestellt sind. Nicht zutreffende Prüfungen zählen nicht mit.",
-      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "refId": "A", "expr": "avg(schule_sicherheit_score_prozent{rolle=~\"$rolle\"})", "instant": true }
+        {
+          "refId": "A",
+          "expr": "avg(schule_sicherheit_score_prozent{rolle=~\"$rolle\"})",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
@@ -71,14 +151,28 @@
           "min": 0,
           "max": 100,
           "decimals": 0,
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "orange", "value": 60 },
-              { "color": "yellow", "value": 75 },
-              { "color": "green", "value": 90 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "yellow",
+                "value": 75
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
             ]
           }
         },
@@ -90,13 +184,31 @@
       "type": "stat",
       "title": "Abweichungen mit hoher Schwere",
       "description": "Summe über alle Geräte. Diese Punkte sind die, die im Ernstfall den Unterschied machen.",
-      "gridPos": { "h": 7, "w": 5, "x": 6, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 7,
+        "w": 5,
+        "x": 6,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(schule_sicherheit_abweichungen{schwere=\"hoch\", rolle=~\"$rolle\"}) or vector(0)", "instant": true }
+        {
+          "refId": "A",
+          "expr": "sum(schule_sicherheit_abweichungen{schwere=\"hoch\", rolle=~\"$rolle\"}) or vector(0)",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "background",
         "graphMode": "area",
         "textMode": "value",
@@ -106,13 +218,24 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 1 },
-              { "color": "red", "value": 20 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
             ]
           }
         },
@@ -123,13 +246,31 @@
       "id": 3,
       "type": "stat",
       "title": "Geräte unter 60 %",
-      "gridPos": { "h": 7, "w": 5, "x": 11, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 7,
+        "w": 5,
+        "x": 11,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "refId": "A", "expr": "count(schule_sicherheit_score_prozent{rolle=~\"$rolle\"} < 60) or vector(0)", "instant": true }
+        {
+          "refId": "A",
+          "expr": "count(schule_sicherheit_score_prozent{rolle=~\"$rolle\"} < 60) or vector(0)",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "background",
         "graphMode": "none",
         "textMode": "value",
@@ -139,35 +280,62 @@
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
             ]
           }
         },
         "overrides": []
-      }
+      },
+      "description": "Geraete, bei denen mehr als vier von zehn Haertungspruefungen fehlschlagen. Hier lohnt der Einsatz am meisten."
     },
     {
       "id": 4,
       "type": "timeseries",
       "title": "Entwicklung",
       "description": "Ob die Härtung besser wird, sieht man nur im Verlauf. Ein Sprung nach unten heißt: Da wurde etwas zurückgenommen.",
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "refId": "A", "expr": "avg(schule_sicherheit_score_prozent{rolle=~\"$rolle\"})", "legendFormat": "Durchschnitt" },
-        { "refId": "B", "expr": "min(schule_sicherheit_score_prozent{rolle=~\"$rolle\"})", "legendFormat": "schlechtestes Gerät" }
+        {
+          "refId": "A",
+          "expr": "avg(schule_sicherheit_score_prozent{rolle=~\"$rolle\"})",
+          "legendFormat": "Durchschnitt"
+        },
+        {
+          "refId": "B",
+          "expr": "min(schule_sicherheit_score_prozent{rolle=~\"$rolle\"})",
+          "legendFormat": "schlechtestes Gerät"
+        }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
           "min": 0,
           "max": 100,
-          "color": { "mode": "palette-classic" },
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
@@ -181,15 +349,27 @@
         "overrides": []
       },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       }
     },
     {
       "id": 101,
       "type": "row",
       "title": "Was fehlt – nach Wirkung sortiert",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
       "collapsed": false,
       "panels": []
     },
@@ -198,8 +378,16 @@
       "type": "table",
       "title": "Offene Punkte",
       "description": "Ganz oben steht, was am meisten Geräte betrifft. Meist fehlt überall dieselbe Gruppenrichtlinie – dann hebt ein Handgriff den Wert der ganzen Schule.",
-      "gridPos": { "h": 13, "w": 15, "x": 0, "y": 9 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 13,
+        "w": 15,
+        "x": 0,
+        "y": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "refId": "A",
@@ -212,8 +400,16 @@
         {
           "id": "organize",
           "options": {
-            "excludeByName": { "Time": true },
-            "indexByName": { "schwere": 0, "pruefung": 1, "Value": 2, "kategorie": 3, "massnahme": 4 },
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "schwere": 0,
+              "pruefung": 1,
+              "Value": 2,
+              "kategorie": 3,
+              "massnahme": 4
+            },
             "renameByName": {
               "schwere": "Schwere",
               "pruefung": "Prüfung",
@@ -226,53 +422,144 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true }
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Schwere" },
+            "matcher": {
+              "id": "byName",
+              "options": "Schwere"
+            },
             "properties": [
-              { "id": "custom.width", "value": 95 },
+              {
+                "id": "custom.width",
+                "value": 95
+              },
               {
                 "id": "mappings",
                 "value": [
                   {
                     "type": "value",
                     "options": {
-                      "hoch": { "text": "hoch", "color": "red", "index": 0 },
-                      "mittel": { "text": "mittel", "color": "orange", "index": 1 },
-                      "niedrig": { "text": "niedrig", "color": "text", "index": 2 }
+                      "hoch": {
+                        "text": "hoch",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "mittel": {
+                        "text": "mittel",
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "niedrig": {
+                        "text": "niedrig",
+                        "color": "text",
+                        "index": 2
+                      }
                     }
                   }
                 ]
               },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Geräte" },
+            "matcher": {
+              "id": "byName",
+              "options": "Geräte"
+            },
             "properties": [
-              { "id": "custom.width", "value": 90 },
-              { "id": "decimals", "value": 0 },
-              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "yellow", "value": null }, { "color": "orange", "value": 10 }, { "color": "red", "value": 50 }] } }
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "yellow",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 10
+                    },
+                    {
+                      "color": "red",
+                      "value": 50
+                    }
+                  ]
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Prüfung" },
-            "properties": [{ "id": "custom.width", "value": 260 }]
+            "matcher": {
+              "id": "byName",
+              "options": "Prüfung"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 260
+              }
+            ]
           },
           {
-            "matcher": { "id": "byName", "options": "Bereich" },
-            "properties": [{ "id": "custom.width", "value": 150 }]
+            "matcher": {
+              "id": "byName",
+              "options": "Bereich"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
           }
         ]
       },
       "options": {
         "showHeader": true,
         "cellHeight": "sm",
-        "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" },
-        "sortBy": [{ "displayName": "Geräte", "desc": true }]
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Geräte",
+            "desc": true
+          }
+        ]
       }
     },
     {
@@ -280,8 +567,16 @@
       "type": "bargauge",
       "title": "Erfüllungsgrad je Bereich",
       "description": "Wo lohnt sich der nächste Handgriff am meisten?",
-      "gridPos": { "h": 13, "w": 9, "x": 15, "y": 9 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 13,
+        "w": 9,
+        "x": 15,
+        "y": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "refId": "A",
@@ -295,7 +590,13 @@
         "orientation": "horizontal",
         "showUnfilled": true,
         "valueMode": "color",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "minVizWidth": 8,
         "minVizHeight": 16
       },
@@ -305,14 +606,28 @@
           "min": 0,
           "max": 100,
           "decimals": 0,
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "orange", "value": 60 },
-              { "color": "yellow", "value": 75 },
-              { "color": "green", "value": 90 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "yellow",
+                "value": 75
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
             ]
           }
         },
@@ -323,7 +638,12 @@
       "id": 102,
       "type": "row",
       "title": "Einzelne Prüfung nachschlagen",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
       "collapsed": false,
       "panels": []
     },
@@ -332,8 +652,16 @@
       "type": "table",
       "title": "Geräte, bei denen „$pruefung\" abweicht",
       "description": "Oben im Kopf die Prüfung auswählen. Hier stehen dann genau die Geräte, die angefasst werden müssen.",
-      "gridPos": { "h": 11, "w": 12, "x": 0, "y": 23 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 0,
+        "y": 23
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "refId": "A",
@@ -347,31 +675,66 @@
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true, "__name__": true, "job": true, "instance": true,
-              "typ": true, "standort": true, "Value": true, "schwere": true,
-              "kategorie": true, "pruefung": true, "massnahme": true,
-              "agent_version": true, "modell": true, "domaene": true
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true,
+              "typ": true,
+              "standort": true,
+              "Value": true,
+              "schwere": true,
+              "kategorie": true,
+              "pruefung": true,
+              "massnahme": true,
+              "agent_version": true,
+              "modell": true,
+              "domaene": true
             },
-            "renameByName": { "geraet": "Gerät", "rolle": "Rolle", "raum": "Raum", "betriebssystem": "Betriebssystem" }
+            "renameByName": {
+              "geraet": "Gerät",
+              "rolle": "Rolle",
+              "raum": "Raum",
+              "betriebssystem": "Betriebssystem"
+            }
           }
         }
       ],
       "fieldConfig": {
-        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
         "overrides": []
       },
       "options": {
         "showHeader": true,
         "cellHeight": "sm",
-        "footer": { "show": true, "reducer": ["count"], "countRows": true, "fields": "" }
+        "footer": {
+          "show": true,
+          "reducer": [
+            "count"
+          ],
+          "countRows": true,
+          "fields": ""
+        }
       }
     },
     {
       "id": 21,
       "type": "table",
       "title": "Geräte mit dem größten Nachholbedarf",
-      "gridPos": { "h": 11, "w": 12, "x": 12, "y": 23 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 12,
+        "y": 23
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "refId": "A",
@@ -387,22 +750,40 @@
         }
       ],
       "transformations": [
-        { "id": "joinByField", "options": { "byField": "geraet", "mode": "outer" } },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "geraet",
+            "mode": "outer"
+          }
+        },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time 1": true, "Time 2": true,
-              "__name__ 1": true, "__name__ 2": true,
-              "job 1": true, "job 2": true,
-              "instance 1": true, "instance 2": true,
-              "typ 1": true, "typ 2": true,
-              "standort 1": true, "standort 2": true,
-              "rolle 2": true, "raum 2": true, "schwere": true,
-              "agent_version 1": true, "agent_version 2": true,
-              "modell 1": true, "modell 2": true,
-              "domaene 1": true, "domaene 2": true,
-              "betriebssystem 1": true, "betriebssystem 2": true
+              "Time 1": true,
+              "Time 2": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "job 1": true,
+              "job 2": true,
+              "instance 1": true,
+              "instance 2": true,
+              "typ 1": true,
+              "typ 2": true,
+              "standort 1": true,
+              "standort 2": true,
+              "rolle 2": true,
+              "raum 2": true,
+              "schwere": true,
+              "agent_version 1": true,
+              "agent_version 2": true,
+              "modell 1": true,
+              "modell 2": true,
+              "domaene 1": true,
+              "domaene 2": true,
+              "betriebssystem 1": true,
+              "betriebssystem 2": true
             },
             "renameByName": {
               "geraet": "Gerät",
@@ -415,26 +796,108 @@
         }
       ],
       "fieldConfig": {
-        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Erfüllungsgrad" },
+            "matcher": {
+              "id": "byName",
+              "options": "Erfüllungsgrad"
+            },
             "properties": [
-              { "id": "unit", "value": "percent" },
-              { "id": "decimals", "value": 0 },
-              { "id": "min", "value": 0 },
-              { "id": "max", "value": 100 },
-              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 60 }, { "color": "yellow", "value": 75 }, { "color": "green", "value": 90 }] } }
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 60
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 75
+                    },
+                    {
+                      "color": "green",
+                      "value": 90
+                    }
+                  ]
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Abweichungen (hoch)" },
+            "matcher": {
+              "id": "byName",
+              "options": "Abweichungen (hoch)"
+            },
             "properties": [
-              { "id": "decimals", "value": 0 },
-              { "id": "custom.width", "value": 170 },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 4 }] } }
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 4
+                    }
+                  ]
+                }
+              }
             ]
           }
         ]
@@ -442,15 +905,32 @@
       "options": {
         "showHeader": true,
         "cellHeight": "sm",
-        "footer": { "show": false, "reducer": ["sum"], "fields": "" },
-        "sortBy": [{ "displayName": "Erfüllungsgrad", "desc": false }]
-      }
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Erfüllungsgrad",
+            "desc": false
+          }
+        ]
+      },
+      "description": "Aufsteigend nach Erfuellungsgrad – oben steht, wo anzufangen ist. Die Spalte daneben zeigt, wie viele davon schwerwiegend sind."
     },
     {
       "id": 103,
       "type": "row",
       "title": "Voraussetzungen der Angriffserkennung",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
       "collapsed": false,
       "panels": []
     },
@@ -459,8 +939,16 @@
       "type": "table",
       "title": "Ohne diese Einstellungen findet das Security-Dashboard nichts",
       "description": "Windows protokolliert die gesuchten Ereignisse nur, wenn diese Punkte gesetzt sind. Steht hier etwas auf Rot, ist die Angriffserkennung auf den betroffenen Geräten blind — unabhängig davon, wie gut die Regeln sind.",
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 35 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "refId": "A",
@@ -478,12 +966,27 @@
         }
       ],
       "transformations": [
-        { "id": "joinByField", "options": { "byField": "pruefung", "mode": "outer" } },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "pruefung",
+            "mode": "outer"
+          }
+        },
         {
           "id": "organize",
           "options": {
-            "excludeByName": { "Time 1": true, "Time 2": true, "massnahme 2": true },
-            "indexByName": { "pruefung": 0, "Value #B": 1, "Value #A": 2, "massnahme 1": 3 },
+            "excludeByName": {
+              "Time 1": true,
+              "Time 2": true,
+              "massnahme 2": true
+            },
+            "indexByName": {
+              "pruefung": 0,
+              "Value #B": 1,
+              "Value #A": 2,
+              "massnahme 1": 3
+            },
             "renameByName": {
               "pruefung": "Einstellung",
               "massnahme 1": "Was zu tun ist",
@@ -494,45 +997,134 @@
         }
       ],
       "fieldConfig": {
-        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Geräte ohne" },
+            "matcher": {
+              "id": "byName",
+              "options": "Geräte ohne"
+            },
             "properties": [
-              { "id": "decimals", "value": 0 },
-              { "id": "custom.width", "value": 140 },
-              { "id": "noValue", "value": "0" },
-              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "yellow", "value": null }, { "color": "red", "value": 1 }] } }
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              },
+              {
+                "id": "noValue",
+                "value": "0"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "yellow",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Geräte in Ordnung" },
+            "matcher": {
+              "id": "byName",
+              "options": "Geräte in Ordnung"
+            },
             "properties": [
-              { "id": "decimals", "value": 0 },
-              { "id": "custom.width", "value": 160 },
-              { "id": "noValue", "value": "0" },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "text", "value": null }, { "color": "green", "value": 1 }] } }
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 160
+              },
+              {
+                "id": "noValue",
+                "value": "0"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Einstellung" },
-            "properties": [{ "id": "custom.width", "value": 280 }]
+            "matcher": {
+              "id": "byName",
+              "options": "Einstellung"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 280
+              }
+            ]
           }
         ]
       },
       "options": {
         "showHeader": true,
         "cellHeight": "sm",
-        "footer": { "show": false, "reducer": ["sum"], "fields": "" }
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
       }
     },
     {
       "id": 104,
       "type": "row",
       "title": "Active Directory",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
       "collapsed": false,
       "panels": []
     },
@@ -541,20 +1133,61 @@
       "type": "stat",
       "title": "krbtgt-Kennwort",
       "description": "Wer diesen Schlüssel erbeutet, kann sich beliebige Kerberos-Tickets ausstellen — bis das Kennwort zweimal gewechselt wurde.",
-      "gridPos": { "h": 6, "w": 5, "x": 0, "y": 45 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "max(schule_ad_krbtgt_kennwort_alter_tage)", "instant": true }],
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 0,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(schule_ad_krbtgt_kennwort_alter_tage)",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
           "unit": "d",
           "decimals": 0,
           "noValue": "kein DC gemeldet",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 180 }, { "color": "red", "value": 365 }] }
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 180
+              },
+              {
+                "color": "red",
+                "value": 365
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -564,18 +1197,57 @@
       "type": "stat",
       "title": "Konten ohne Vorauthentifizierung",
       "description": "Bei diesen Konten lässt sich das Kennwort ohne jede Anmeldung offline knacken (AS-REP Roasting).",
-      "gridPos": { "h": 6, "w": 5, "x": 5, "y": 45 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "max(schule_ad_konten_ohne_vorauthentifizierung)", "instant": true }],
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 5,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(schule_ad_konten_ohne_vorauthentifizierung)",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short", "decimals": 0, "noValue": "–",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "–",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -585,18 +1257,61 @@
       "type": "stat",
       "title": "Dienstkonten mit altem Kennwort",
       "description": "Angriffsfläche für Kerberoasting.",
-      "gridPos": { "h": 6, "w": 5, "x": 10, "y": 45 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "max(schule_ad_dienstkonten_altes_kennwort)", "instant": true }],
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 10,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(schule_ad_dienstkonten_altes_kennwort)",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short", "decimals": 0, "noValue": "–",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 }] }
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "–",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -605,42 +1320,145 @@
       "id": 43,
       "type": "stat",
       "title": "Domänen-Administratoren",
-      "gridPos": { "h": 6, "w": 4, "x": 15, "y": 45 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "max(schule_ad_domaenen_administratoren)", "instant": true }],
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 15,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(schule_ad_domaenen_administratoren)",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short", "decimals": 0, "noValue": "–",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 6 }, { "color": "red", "value": 11 }] }
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "–",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 6
+              },
+              {
+                "color": "red",
+                "value": 11
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Anzahl der Konten mit vollen Rechten in der Domaene. Mehr als eine Handvoll ist in einer Schule selten begruendbar."
     },
     {
       "id": 44,
       "type": "stat",
       "title": "Karteileichen",
       "description": "Aktivierte Konten ohne Anmeldung in den letzten 90 Tagen.",
-      "gridPos": { "h": 6, "w": 5, "x": 19, "y": 45 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "max(schule_ad_inaktive_konten)", "instant": true }],
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 19,
+        "y": 45
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(schule_ad_inaktive_konten)",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short", "decimals": 0, "noValue": "–",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 6 }, { "color": "orange", "value": 21 }] }
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "–",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 6
+              },
+              {
+                "color": "orange",
+                "value": 21
+              }
+            ]
+          }
         },
         "overrides": []
       }
+    }
+  ],
+  "links": [
+    {
+      "title": "Andere Dashboards",
+      "type": "dashboards",
+      "tags": [
+        "schule"
+      ],
+      "asDropdown": true,
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "Zeitraum und Geraeteauswahl werden mitgenommen",
+      "url": ""
     }
   ]
 }

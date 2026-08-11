@@ -1,0 +1,497 @@
+---
+# Regeltests fuer die Alarme.
+#
+#   promtool test rules stack/prometheus/tests/*.yml
+#
+# Der Sinn: Eine Alarmregel, die syntaktisch stimmt, kann trotzdem falsch
+# sein – zu frueh anschlagen, zu spaet, oder gar nicht. Hier werden
+# erfundene Messwertverlaeufe durch die echten Regeln geschickt und
+# geprueft, was dabei herauskommt.
+#
+# Getestet wird beides: dass ein Alarm im Ernstfall kommt UND dass er im
+# Normalbetrieb schweigt. Das zweite ist das wichtigere – ein Monitoring,
+# das staendig grundlos meldet, schaut sich nach zwei Wochen niemand mehr an.
+
+rule_files:
+  - ../rules/10-hardware.yml
+  - ../rules/20-verfuegbarkeit.yml
+  - ../rules/60-leistung.yml
+  - ../rules/70-erkennung.yml
+  - ../rules/80-verzeichnisdienst.yml
+  - ../rules/90-konfiguration-netzplan.yml
+
+evaluation_interval: 1m
+
+tests:
+
+  # =================================================================== #
+  # Hardware-Vorwarnungen
+  # =================================================================== #
+  - interval: 1m
+    name: "S.M.A.R.T. sagt einen Plattenausfall voraus"
+    input_series:
+      - series: 'schule_datentraeger_ausfall_vorhersage{geraet="srv-datei-01",geraetekennung="SCSI\\Disk&Ven_NVMe\\5&1ec5b4a1&0&000000_0",modell="Samsung SSD 970 EVO 1TB",seriennummer="S4EWNX0N123456"}'
+        # Erst 20 Minuten unauffaellig, dann meldet die Platte den Ausfall
+        values: "0+0x20 1+0x40"
+    alert_rule_test:
+      # Nach 10 Minuten ist noch alles gut
+      - eval_time: 10m
+        alertname: SmartAusfallVorhergesagt
+        exp_alerts: []
+      # Kurz nach dem Umschlag greift das "for: 10m" noch nicht
+      - eval_time: 25m
+        alertname: SmartAusfallVorhergesagt
+        exp_alerts: []
+      # Nach zehn Minuten Dauerzustand muss der Alarm stehen
+      - eval_time: 35m
+        alertname: SmartAusfallVorhergesagt
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              kategorie: hardware
+              vorwarnung: "ja"
+              geraet: srv-datei-01
+              geraetekennung: "SCSI\\Disk&Ven_NVMe\\5&1ec5b4a1&0&000000_0"
+              modell: Samsung SSD 970 EVO 1TB
+              seriennummer: S4EWNX0N123456
+            exp_annotations:
+              summary: "S.M.A.R.T. meldet bevorstehenden Plattenausfall auf srv-datei-01"
+              # Modell und Seriennummer muessen hier stehen - ohne sie weiss
+              # niemand, welche Platte im Server zu tauschen ist.
+              description: "Datentraeger Samsung SSD 970 EVO 1TB (Seriennummer S4EWNX0N123456) in srv-datei-01 meldet einen bevorstehenden Ausfall. Platte zeitnah tauschen und Datensicherung pruefen."
+
+  - interval: 1m
+    name: "SSD-Verschleiss: 80 % warnt, 90 % ist kritisch"
+    input_series:
+      - series: 'schule_datentraeger_verschleiss_prozent{geraet="srv-hyperv-01",modell="Samsung SSD 970 EVO 1TB",seriennummer="S4EWNX0N123456",typ="SSD"}'
+        values: "82+0x200"
+      - series: 'schule_datentraeger_verschleiss_prozent{geraet="srv-hyperv-02",modell="Samsung SSD 970 EVO 1TB",seriennummer="S4EWNX0N654321",typ="SSD"}'
+        values: "60+0x200"
+    alert_rule_test:
+      # Nach einer Stunde steht die Warnung fuer das eine Geraet,
+      # das gesunde bleibt still.
+      - eval_time: 70m
+        alertname: SsdVerschleissHoch
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kategorie: hardware
+              vorwarnung: "ja"
+              geraet: srv-hyperv-01
+              modell: Samsung SSD 970 EVO 1TB
+              seriennummer: S4EWNX0N123456
+              typ: SSD
+            exp_annotations:
+              summary: "SSD-Verschleiss 82 % in srv-hyperv-01"
+              description: "Ersatzbeschaffung fuer Samsung SSD 970 EVO 1TB einplanen."
+      # Bei 82 % darf der kritische Alarm nicht anschlagen
+      - eval_time: 70m
+        alertname: SsdVerschleissKritisch
+        exp_alerts: []
+
+  - interval: 1m
+    name: "WHEA-Hardwarefehler schlaegt sofort an"
+    input_series:
+      - series: 'schule_whea_fehler_24h{geraet="srv-dc-01",quelle="WHEA-Logger"}'
+        values: "0+0x5 3+0x20"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: WheaHardwarefehler
+        exp_alerts: []
+      # Ohne "for" muss der Alarm bei der naechsten Auswertung stehen
+      - eval_time: 8m
+        alertname: WheaHardwarefehler
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              kategorie: hardware
+              vorwarnung: "ja"
+              geraet: srv-dc-01
+              quelle: WHEA-Logger
+            exp_annotations:
+              summary: "WHEA-Hardwarefehler auf srv-dc-01"
+              description: "Windows meldet korrigierte oder unkorrigierbare Hardwarefehler (Quelle WHEA-Logger). Typisch fuer defekten RAM, CPU oder PCIe-Karte. Diagnose sofort starten – das ist die klassische Vorstufe eines Totalausfalls."
+
+  # =================================================================== #
+  # Der wichtigste Fall: Vorhersage statt Schwellwert
+  # =================================================================== #
+  - interval: 5m
+    name: "Platte laeuft in vier Tagen voll – Trend statt Schwellwert"
+    input_series:
+      # 200 GB Platte, faellt gleichmaessig um 1 GB je 5 Minuten.
+      # Damit ist sie in gut einem halben Tag leer – die Hochrechnung
+      # auf vier Tage muss also deutlich unter null landen.
+      - series: 'windows_logical_disk_size_bytes{geraet="srv-datei-01",volume="D:"}'
+        values: "214748364800+0x200"
+      - series: 'windows_logical_disk_free_bytes{geraet="srv-datei-01",volume="D:"}'
+        values: "161061273600-1073741824x200"
+      # Eine zweite Platte, die sich nicht veraendert: darf nicht melden.
+      - series: 'windows_logical_disk_size_bytes{geraet="srv-datei-01",volume="C:"}'
+        values: "214748364800+0x200"
+      - series: 'windows_logical_disk_free_bytes{geraet="srv-datei-01",volume="C:"}'
+        values: "107374182400+0x200"
+    alert_rule_test:
+      - eval_time: 14h
+        alertname: SpeicherplatzLaeuftInVierTagenVoll
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kategorie: kapazitaet
+              vorwarnung: "ja"
+              geraet: srv-datei-01
+              volume: "D:"
+            exp_annotations:
+              summary: "D: auf srv-datei-01 ist in ca. 4 Tagen voll"
+              description: "Hochrechnung aus dem Verlauf der letzten 12 Stunden. Jetzt aufraeumen oder erweitern."
+
+  # =================================================================== #
+  # Verfuegbarkeit
+  # =================================================================== #
+  - interval: 1m
+    name: "Server faellt aus, Client-Ausfall meldet anders"
+    input_series:
+      - series: 'up{job="windows",geraet="srv-datei-01",rolle="server"}'
+        values: "1+0x10 0+0x30"
+      - series: 'up{job="windows",geraet="pc-edv-12",rolle="client"}'
+        values: "1+0x10 0+0x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ServerNichtErreichbar
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              kategorie: verfuegbarkeit
+              job: windows
+              geraet: srv-datei-01
+              rolle: server
+            exp_annotations:
+              summary: "Server srv-datei-01 antwortet nicht mehr"
+              description: "Seit 5 Minuten kein Kontakt. Sofort pruefen."
+
+  # =================================================================== #
+  # Active Directory
+  # =================================================================== #
+  - interval: 1m
+    name: "Replikation bricht – Fehlercode und Stillstand"
+    input_series:
+      - series: 'schule_ad_replikation_fehlercode{geraet="dc01",partner="dc02",partition="schule"}'
+        values: "0+0x30 8524+0x60"
+      - series: 'schule_ad_replikation_letzter_erfolg_sekunden{geraet="dc01",partner="dc02",partition="schule"}'
+        # Waechst nach dem Bruch stetig an
+        values: "300+0x30 300+60x60"
+    alert_rule_test:
+      # Vor dem Bruch ist alles still
+      - eval_time: 20m
+        alertname: AdReplikationFehlgeschlagen
+        exp_alerts: []
+      # 30 Minuten nach dem Bruch (for: 30m) muss der Alarm stehen
+      - eval_time: 65m
+        alertname: AdReplikationFehlgeschlagen
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              kategorie: verzeichnisdienst
+              geraet: dc01
+              partner: dc02
+              partition: schule
+            exp_annotations:
+              summary: "AD-Replikation mit dc02 schlaegt fehl"
+              description: "Partition schule, Fehlercode 8524. Auf dem Domaenencontroller nachsehen mit: repadmin /showrepl  –  haeufigste Ursachen sind DNS, eine blockierende Firewall oder ein zu weit abgewichener DC."
+
+  - interval: 1m
+    name: "SYSVOL-Freigabe verschwindet"
+    input_series:
+      - series: 'schule_ad_freigabe_vorhanden{geraet="dc01",freigabe="SYSVOL"}'
+        values: "1+0x20 0+0x40"
+      - series: 'schule_ad_freigabe_vorhanden{geraet="dc01",freigabe="NETLOGON"}'
+        values: "1+0x60"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SysvolFreigabeFehlt
+        exp_alerts: []
+      # Nur SYSVOL fehlt, NETLOGON darf nicht mitmelden
+      - eval_time: 35m
+        alertname: SysvolFreigabeFehlt
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              kategorie: verzeichnisdienst
+              geraet: dc01
+              freigabe: SYSVOL
+            exp_annotations:
+              summary: "Freigabe SYSVOL fehlt auf dc01"
+              description: >-
+                Ohne SYSVOL und NETLOGON verteilt dieser Domaenencontroller
+                keine Gruppenrichtlinien mehr – und damit auch nicht das
+                Agent-Skript. Der DC hat sich vermutlich nicht sauber
+                hochgefahren (Journal-Wrap oder haengende Erstsynchronisierung).
+
+  - interval: 1m
+    name: "FRS-Erkennung: Zustand 3 ist gut, alles darunter meldet"
+    input_series:
+      - series: 'schule_ad_sysvol_migrationszustand{geraet="dc01"}'
+        values: "3+0x200"
+      - series: 'schule_ad_sysvol_migrationszustand{geraet="dc02"}'
+        values: "1+0x200"
+      # -1 heisst "nicht lesbar" und darf keinen Alarm ausloesen
+      - series: 'schule_ad_sysvol_migrationszustand{geraet="dc03"}'
+        values: "-1+0x200"
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: SysvolNochAufFrs
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kategorie: verzeichnisdienst
+              vorwarnung: "ja"
+              geraet: dc02
+            exp_annotations:
+              summary: "SYSVOL repliziert noch ganz oder teilweise ueber FRS"
+              description: >-
+                Zustand 1 statt 3. FRS wird von Windows Server 2016 und neuer
+                nicht mehr unterstuetzt: Ein neuer Domaenencontroller laesst
+                sich so nicht aufnehmen. Migration auf DFSR einplanen
+                (dfsrmig /getglobalstate).
+
+  - interval: 1m
+    name: "Kontosperrungen: 10 sind still, 11 warnen, 41 sind kritisch"
+    input_series:
+      - series: 'schule_ad_kontosperrungen_1h{geraet="dc01"}'
+        values: "10+0x20"
+      - series: 'schule_ad_kontosperrungen_1h{geraet="dc02"}'
+        values: "25+0x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: VieleKontosperrungen
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kategorie: security
+              geraet: dc02
+            exp_annotations:
+              summary: "25 Kontosperrungen in der letzten Stunde"
+              description: >-
+                Entweder ein Kennwortangriff oder ein Geraet mit gespeichertem
+                altem Kennwort. Der Unterschied zeigt sich daran, ob es viele
+                verschiedene Konten sind oder immer dasselbe. Im Dashboard
+                "Sicherheit" bei Ereignis 4740 nachsehen.
+      # Bei 25 darf der kritische Alarm noch nicht kommen
+      - eval_time: 10m
+        alertname: SehrVieleKontosperrungen
+        exp_alerts: []
+
+  # =================================================================== #
+  # Geraeteerkennung
+  # =================================================================== #
+  - interval: 1m
+    name: "Neues Geraet meldet nur, solange es neu und unerfasst ist"
+    input_series:
+      # Frisch gesehen und nicht erfasst -> meldet
+      - series: 'schule_erkanntes_geraet{geraet="sw-neu",adresse="10.0.0.77",typ="switch",hersteller="unifi",quelle="snmp",erfasst="nein"}'
+        values: "1+0x60"
+      - series: 'schule_erkanntes_geraet_erste_sichtung_zeitstempel{geraet="sw-neu",adresse="10.0.0.77"}'
+        values: "0+0x60"
+      # Ebenfalls neu, aber bereits erfasst -> darf nicht melden
+      - series: 'schule_erkanntes_geraet{geraet="sw-alt",adresse="10.0.0.2",typ="switch",hersteller="unifi",quelle="snmp",erfasst="ja"}'
+        values: "1+0x60"
+      - series: 'schule_erkanntes_geraet_erste_sichtung_zeitstempel{geraet="sw-alt",adresse="10.0.0.2"}'
+        values: "0+0x60"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NeuesGeraetImNetz
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              kategorie: erkennung
+              geraet: sw-neu
+              adresse: 10.0.0.77
+              typ: switch
+              hersteller: unifi
+              quelle: snmp
+              erfasst: nein
+            exp_annotations:
+              summary: "Neues Geraet im Netz: sw-neu (10.0.0.77)"
+              description: >-
+                Erkannt als switch von unifi, gefunden ueber snmp. Es wird
+                bereits ueberwacht. Fuer einen sprechenden Namen und den Raum
+                den Eintrag aus inventar/gefunden.yml nach inventar.yml
+                uebernehmen.
+
+  # =================================================================== #
+  # Konfigurationssicherung
+  # =================================================================== #
+  - interval: 1m
+    name: "Fehlgeschlagene Sicherung meldet, erfolgreiche schweigt"
+    input_series:
+      - series: 'schule_konfig_sicherung_erfolgreich{geraet="fortigate"}'
+        values: "0+0x60"
+      - series: 'schule_konfig_sicherung_erfolgreich{geraet="unifi"}'
+        values: "1+0x60"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KonfigurationssicherungFehlgeschlagen
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: KonfigurationssicherungFehlgeschlagen
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kategorie: sicherung
+              geraet: fortigate
+            exp_annotations:
+              summary: "Konfiguration von fortigate konnte nicht gesichert werden"
+              description: >-
+                Meist ein abgelaufenes API-Token oder ein geaendertes Kennwort.
+                Auf der VM nachsehen mit: journalctl -u schulmonitoring-konfig
+                --since today
+
+  # =================================================================== #
+  # Netzplan
+  # =================================================================== #
+  - interval: 1m
+    name: "Verschwundene Verbindung wird erkannt, gleichbleibende nicht"
+    input_series:
+      # Erst vier Nachbarn, dann nur noch zwei
+      - series: 'schule_lldp_nachbarn{geraet="sw-core-01"}'
+        values: "4+0x120 2+0x120"
+      # Unveraendert - darf nicht melden
+      - series: 'schule_lldp_nachbarn{geraet="sw-edv-01"}'
+        values: "3+0x240"
+    alert_rule_test:
+      - eval_time: 110m
+        alertname: NetzplanVerbindungVerschwunden
+        exp_alerts: []
+      - eval_time: 160m
+        alertname: NetzplanVerbindungVerschwunden
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kategorie: netzwerk
+              geraet: sw-core-01
+            exp_annotations:
+              summary: "sw-core-01 meldet weniger Nachbarn als sonst"
+              description: >-
+                Aktuell 2. Ein Geraet ist von diesem Switch verschwunden –
+                abgesteckt, ausgefallen oder Kabelproblem. Im Dashboard
+                "Geraeteerkennung" zeigt die Tabelle "Netzplan", was zuletzt an
+                welchem Port hing.
+
+  # =================================================================== #
+  # Ruhe im Normalbetrieb
+  #
+  # Der wichtigste Test der Datei: Eine vollstaendig gesunde Umgebung
+  # darf keinen einzigen Alarm ausloesen.
+  # =================================================================== #
+  - interval: 1m
+    name: "Gesunde Umgebung loest keinen Alarm aus"
+    input_series:
+      - series: 'up{job="windows",geraet="srv-datei-01",rolle="server"}'
+        values: "1+0x120"
+      - series: 'up{job="windows",geraet="pc-edv-12",rolle="client"}'
+        values: "1+0x120"
+      - series: 'schule_datentraeger_ausfall_vorhersage{geraet="srv-datei-01",geraetekennung="SCSI\\Disk\\0_0",modell="Samsung SSD 970",seriennummer="S4EWNX0N123456"}'
+        values: "0+0x120"
+      - series: 'schule_datentraeger_verschleiss_prozent{geraet="srv-datei-01",modell="Samsung SSD 970",seriennummer="S4EWNX0N123456",typ="SSD"}'
+        values: "12+0x120"
+      - series: 'schule_whea_fehler_24h{geraet="srv-datei-01",quelle="WHEA-Logger"}'
+        values: "0+0x120"
+      - series: 'windows_logical_disk_size_bytes{geraet="srv-datei-01",volume="C:"}'
+        values: "214748364800+0x120"
+      - series: 'windows_logical_disk_free_bytes{geraet="srv-datei-01",volume="C:"}'
+        values: "107374182400+0x120"
+      - series: 'schule_ad_replikation_fehlercode{geraet="dc01",partner="dc02",partition="schule"}'
+        values: "0+0x120"
+      - series: 'schule_ad_replikation_letzter_erfolg_sekunden{geraet="dc01",partner="dc02",partition="schule"}'
+        values: "180+0x120"
+      - series: 'schule_ad_freigabe_vorhanden{geraet="dc01",freigabe="SYSVOL"}'
+        values: "1+0x120"
+      - series: 'schule_ad_sysvol_migrationszustand{geraet="dc01"}'
+        values: "3+0x120"
+      - series: 'schule_ad_kontosperrungen_1h{geraet="dc01"}'
+        values: "0+0x120"
+      - series: 'schule_ad_ldap_antwortzeit_sekunden{geraet="dc01"}'
+        values: "0.02+0x120"
+      - series: 'schule_ad_ldap_erreichbar{geraet="dc01"}'
+        values: "1+0x120"
+      - series: 'schule_ad_globaler_katalog_erreichbar{geraet="dc01"}'
+        values: "1+0x120"
+      - series: 'schule_ad_fsmo_erreichbar{geraet="dc01",rolle="pdc_emulator",inhaber="dc01"}'
+        values: "1+0x120"
+      - series: 'schule_ad_dfsr_zustand{geraet="dc01",ordner="SYSVOL Share",gruppe="Domain System Volume"}'
+        values: "4+0x120"
+      - series: 'schule_konfig_sicherung_erfolgreich{geraet="fortigate"}'
+        values: "1+0x120"
+      - series: 'schule_konfig_geaendert'
+        values: "0+0x120"
+      - series: 'schule_lldp_nachbarn{geraet="sw-core-01"}'
+        values: "4+0x120"
+      - series: 'schule_erkennung_unerfasst'
+        values: "0+0x120"
+      - series: 'schule_agenten_gesamt'
+        values: "42+0x120"
+      - series: 'schule_agent_version_alt'
+        values: "0+0x120"
+    alert_rule_test:
+      - eval_time: 115m
+        alertname: SmartAusfallVorhergesagt
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: SsdVerschleissHoch
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: WheaHardwarefehler
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: SpeicherplatzKnapp
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: SpeicherplatzLaeuftInVierTagenVoll
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: ServerNichtErreichbar
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: AgentMeldetSichNicht
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: AdReplikationFehlgeschlagen
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: AdReplikationHaengtSeitLangem
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: SysvolFreigabeFehlt
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: SysvolNochAufFrs
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: DfsrOrdnerImFehler
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: VieleKontosperrungen
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: LdapAntwortzeitHoch
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: FsmoRolleNichtErreichbar
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: KonfigurationssicherungFehlgeschlagen
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: NetzkonfigurationGeaendert
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: NetzplanVerbindungVerschwunden
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: VieleUnerfassteGeraete
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: KeineNeuenAgenten
+        exp_alerts: []
+      - eval_time: 115m
+        alertname: AgentVeraltet
+        exp_alerts: []

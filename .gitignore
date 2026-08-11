@@ -30,3 +30,6 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+
+# Von pruefen.sh geladene Pruefwerkzeuge (promtool, amtool)
+.werkzeuge/

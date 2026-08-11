@@ -2,29 +2,76 @@
   "uid": "schule-security",
   "title": "Sicherheit & Angriffserkennung",
   "description": "Was passiert auf den Geräten – und deutet etwas davon auf einen Angriff hin?",
-  "tags": ["schule", "security"],
+  "tags": [
+    "schule",
+    "security"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "1m",
   "editable": true,
   "graphTooltip": 1,
-  "time": { "from": "now-24h", "to": "now" },
-  "annotations": { "list": [] },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Alarme",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "step": "60s",
+        "tagKeys": "severity,kategorie,geraet",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{geraet}} · {{severity}}",
+        "target": {
+          "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+          "refId": "Anno"
+        },
+        "useValueForTime": false
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
         "name": "geraet",
         "label": "Gerät",
         "type": "query",
-        "datasource": { "type": "loki", "uid": "loki" },
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
         "query": "label_values({job=\"windows_events\"}, geraet)",
         "refresh": 2,
         "sort": 1,
         "includeAll": true,
         "multi": true,
         "allValue": ".*",
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -33,7 +80,12 @@
       "id": 100,
       "type": "row",
       "title": "Lage",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "collapsed": false,
       "panels": []
     },
@@ -41,106 +93,299 @@
       "id": 1,
       "type": "stat",
       "title": "Offene Sicherheitsmeldungen",
-      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "sum(ALERTS{alertstate=\"firing\", kategorie=\"security\"}) or vector(0)", "instant": true }],
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(ALERTS{alertstate=\"firing\", kategorie=\"security\"}) or vector(0)",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short", "decimals": 0,
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Alle laufenden Alarme der Kategorie „security\". Diese gehen an der normalen Buendelung vorbei und werden sofort zugestellt."
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Fehlanmeldungen (24 h)",
-      "gridPos": { "h": 5, "w": 5, "x": 5, "y": 1 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 5,
+        "y": 1
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(count_over_time({job=\"windows_events\", channel=\"Security\", geraet=~\"$geraet\"} |= \"4625\" [24h]))", "instant": true }
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"windows_events\", channel=\"Security\", geraet=~\"$geraet\"} |= \"4625\" [24h]))",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short", "decimals": 0,
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] }
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Ereignis 4625. Einzelne Faelle sind Tippfehler. Ein Sprung auf das Vielfache des Ueblichen ist ein Kennwortangriff."
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Schadsoftware-Funde (24 h)",
-      "gridPos": { "h": 5, "w": 5, "x": 10, "y": 1 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 10,
+        "y": 1
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(count_over_time({job=\"windows_events\", channel=\"Defender\"} |~ \"\\\"event_id\\\":111[67]\" [24h]))", "instant": true }
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"windows_events\", channel=\"Defender\"} |~ \"\\\"event_id\\\":111[67]\" [24h]))",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short", "decimals": 0,
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Defender-Ereignisse 1116 und 1117. Auch ein bereinigter Fund gehoert angesehen: Er verraet, auf welchem Weg etwas hereinkam."
     },
     {
       "id": 4,
       "type": "stat",
       "title": "Von der Firewall blockierte Angriffe (24 h)",
-      "gridPos": { "h": 5, "w": 5, "x": 15, "y": 1 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 15,
+        "y": 1
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(count_over_time({job=\"syslog\", quelle=\"fortigate\"} |= \"subtype=\\\"ips\\\"\" [24h]))", "instant": true }
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"syslog\", quelle=\"fortigate\"} |= \"subtype=\\\"ips\\\"\" [24h]))",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "value", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "purple" } }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          }
+        },
+        "overrides": []
+      },
+      "description": "Treffer des Angriffsschutzes. Ein hoher Wert ist kein Grund zur Sorge – blockiert ist blockiert. Interessant sind Aenderungen im Muster."
     },
     {
       "id": 5,
       "type": "stat",
       "title": "Geräte ohne Echtzeitschutz",
-      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "count(schule_defender_echtzeitschutz == 0) or vector(0)", "instant": true }],
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(schule_defender_echtzeitschutz == 0) or vector(0)",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short", "decimals": 0,
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Jedes Geraet hier ist ungeschuetzt. Entweder wurde der Schutz abgeschaltet oder Schadsoftware hat ihn ausgeschaltet."
     },
     {
       "id": 101,
       "type": "row",
       "title": "Anmeldeversuche",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
       "collapsed": false,
       "panels": []
     },
@@ -149,8 +394,16 @@
       "type": "timeseries",
       "title": "Fehlgeschlagene Anmeldungen je Gerät",
       "description": "Ein einzelner hoher Balken auf einem Gerät ist der typische Fingerabdruck eines Kennwortangriffs.",
-      "gridPos": { "h": 9, "w": 14, "x": 0, "y": 7 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "h": 9,
+        "w": 14,
+        "x": 0,
+        "y": 7
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
@@ -161,19 +414,51 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 70, "showPoints": "never", "stacking": { "mode": "normal", "group": "A" } }
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
         },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } }
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 11,
       "type": "timeseries",
       "title": "Erfolgreiche Anmeldungen",
-      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 7 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "h": 9,
+        "w": 10,
+        "x": 14,
+        "y": 7
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
@@ -184,18 +469,41 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "fixed", "fixedColor": "green" },
-          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60, "showPoints": "never" }
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 60,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "hidden", "showLegend": false }, "tooltip": { "mode": "single", "sort": "none" } }
+      "options": {
+        "legend": {
+          "displayMode": "hidden",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "description": "Ereignis 4624 im Verlauf. Anmeldungen mitten in der Nacht oder in den Ferien sind der interessante Teil."
     },
     {
       "id": 102,
       "type": "row",
       "title": "Verdächtige Aktivitäten",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
       "collapsed": false,
       "panels": []
     },
@@ -204,8 +512,16 @@
       "type": "logs",
       "title": "Rechteänderungen, neue Konten und Dienste",
       "description": "Ereignisse 4720 (neues Konto), 4728/4732/4756 (Gruppe), 7045 (neuer Dienst), 4698 (neue Aufgabe), 1102 (Protokoll geleert).",
-      "gridPos": { "h": 11, "w": 12, "x": 0, "y": 17 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
@@ -213,8 +529,14 @@
         }
       ],
       "options": {
-        "showTime": true, "showLabels": true, "showCommonLabels": false, "wrapLogMessage": true,
-        "prettifyLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
       }
     },
     {
@@ -222,8 +544,16 @@
       "type": "logs",
       "title": "Verdächtige Befehle und Werkzeuge",
       "description": "Verschleierte PowerShell, zweckentfremdete Bordmittel und bekannte Angriffswerkzeuge.",
-      "gridPos": { "h": 11, "w": 12, "x": 12, "y": 17 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
@@ -231,15 +561,26 @@
         }
       ],
       "options": {
-        "showTime": true, "showLabels": true, "showCommonLabels": false, "wrapLogMessage": true,
-        "prettifyLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
       }
     },
     {
       "id": 103,
       "type": "row",
       "title": "Firewall",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
       "collapsed": false,
       "panels": []
     },
@@ -247,8 +588,16 @@
       "id": 30,
       "type": "timeseries",
       "title": "Angriffe nach Schweregrad",
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 29 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
@@ -259,19 +608,49 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 70, "showPoints": "never", "stacking": { "mode": "normal", "group": "A" } }
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
         },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Blockierte Angriffe, aufgeschluesselt. Ein Anstieg bei „critical\" ist etwas anderes als Hintergrundrauschen bei „low\"."
     },
     {
       "id": 31,
       "type": "logs",
       "title": "Schwere Vorfälle an der Firewall",
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 29 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
@@ -279,15 +658,27 @@
         }
       ],
       "options": {
-        "showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true,
-        "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"
-      }
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "description": "Nur Meldungen mit hohem Schweregrad, Virenfunde und Botnetz-Kontakte. Ein Botnetz-Kontakt heisst: Ein Geraet im Haus ist bereits befallen."
     },
     {
       "id": 104,
       "type": "row",
       "title": "Sicherheitshygiene",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
       "collapsed": false,
       "panels": []
     },
@@ -296,27 +687,70 @@
       "type": "table",
       "title": "Geräte mit Schutzlücken",
       "description": "Virenschutz aus, Signaturen alt, Firewall aus oder lange keine Updates.",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 39 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "refId": "A", "expr": "schule_defender_echtzeitschutz", "instant": true, "format": "table" },
-        { "refId": "B", "expr": "schule_defender_signatur_alter_tage", "instant": true, "format": "table" },
-        { "refId": "C", "expr": "schule_patch_alter_tage", "instant": true, "format": "table" }
+        {
+          "refId": "A",
+          "expr": "schule_defender_echtzeitschutz",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "schule_defender_signatur_alter_tage",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "expr": "schule_patch_alter_tage",
+          "instant": true,
+          "format": "table"
+        }
       ],
       "transformations": [
-        { "id": "joinByField", "options": { "byField": "geraet", "mode": "outer" } },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "geraet",
+            "mode": "outer"
+          }
+        },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time 1": true, "Time 2": true, "Time 3": true,
-              "__name__ 1": true, "__name__ 2": true, "__name__ 3": true,
-              "job 1": true, "job 2": true, "job 3": true,
-              "instance 1": true, "instance 2": true, "instance 3": true,
-              "typ 1": true, "typ 2": true, "typ 3": true,
-              "standort 1": true, "standort 2": true, "standort 3": true,
-              "rolle 2": true, "rolle 3": true,
-              "raum 2": true, "raum 3": true
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "__name__ 3": true,
+              "job 1": true,
+              "job 2": true,
+              "job 3": true,
+              "instance 1": true,
+              "instance 2": true,
+              "instance 3": true,
+              "typ 1": true,
+              "typ 2": true,
+              "typ 3": true,
+              "standort 1": true,
+              "standort 2": true,
+              "standort 3": true,
+              "rolle 2": true,
+              "rolle 3": true,
+              "raum 2": true,
+              "raum 3": true
             },
             "renameByName": {
               "geraet": "Gerät",
@@ -330,40 +764,159 @@
         }
       ],
       "fieldConfig": {
-        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Echtzeitschutz" },
+            "matcher": {
+              "id": "byName",
+              "options": "Echtzeitschutz"
+            },
             "properties": [
               {
                 "id": "mappings",
                 "value": [
-                  { "type": "value", "options": { "0": { "text": "AUS", "color": "red", "index": 0 } } },
-                  { "type": "value", "options": { "1": { "text": "aktiv", "color": "green", "index": 1 } } }
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "AUS",
+                        "color": "red",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": {
+                        "text": "aktiv",
+                        "color": "green",
+                        "index": 1
+                      }
+                    }
+                  }
                 ]
               },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Signaturalter (Tage)" },
+            "matcher": {
+              "id": "byName",
+              "options": "Signaturalter (Tage)"
+            },
             "properties": [
-              { "id": "decimals", "value": 0 },
-              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 3 }, { "color": "red", "value": 7 }] } }
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 3
+                    },
+                    {
+                      "color": "red",
+                      "value": 7
+                    }
+                  ]
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Patchalter (Tage)" },
+            "matcher": {
+              "id": "byName",
+              "options": "Patchalter (Tage)"
+            },
             "properties": [
-              { "id": "decimals", "value": 0 },
-              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 45 }, { "color": "red", "value": 90 }] } }
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 45
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              }
             ]
           }
         ]
       },
-      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "fields": "" } }
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "title": "Andere Dashboards",
+      "type": "dashboards",
+      "tags": [
+        "schule"
+      ],
+      "asDropdown": true,
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "Zeitraum und Geraeteauswahl werden mitgenommen",
+      "url": ""
     }
   ]
 }

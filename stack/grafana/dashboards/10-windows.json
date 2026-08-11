@@ -2,23 +2,70 @@
   "uid": "schule-windows",
   "title": "Windows – Detail je Gerät",
   "description": "Alles zu einem einzelnen Server oder Client: Last, Datenträger, Dienste, Ereignisse.",
-  "tags": ["schule", "windows"],
+  "tags": [
+    "schule",
+    "windows"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
   "editable": true,
   "graphTooltip": 1,
-  "time": { "from": "now-6h", "to": "now" },
-  "annotations": { "list": [] },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Alarme",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "step": "60s",
+        "tagKeys": "severity,kategorie,geraet",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{geraet}} · {{severity}}",
+        "target": {
+          "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+          "refId": "Anno"
+        },
+        "useValueForTime": false
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
         "name": "geraet",
         "label": "Gerät",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": { "query": "label_values(windows_cs_hostname, geraet)", "refId": "A" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(windows_cs_hostname, geraet)",
+          "refId": "A"
+        },
         "refresh": 1,
         "sort": 1,
         "includeAll": false,
@@ -29,8 +76,14 @@
         "name": "rolle",
         "label": "Rolle",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": { "query": "label_values(up{job=\"windows\"}, rolle)", "refId": "B" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(up{job=\"windows\"}, rolle)",
+          "refId": "B"
+        },
         "refresh": 1,
         "sort": 1,
         "includeAll": true,
@@ -44,102 +97,360 @@
       "id": 1,
       "type": "stat",
       "title": "Zustand",
-      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "up{job=\"windows\", geraet=\"$geraet\"}", "instant": true }],
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"windows\", geraet=\"$geraet\"}",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "0": { "text": "OFFLINE", "color": "red", "index": 0 } } },
-            { "type": "value", "options": { "1": { "text": "Online", "color": "green", "index": 1 } } }
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "OFFLINE",
+                  "color": "red",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "Online",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
           ],
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Antwortet der Messwert-Dienst auf diesem Geraet? Steht hier 0, ist entweder das Geraet aus oder der Agent haengt."
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Läuft seit",
-      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "schule:laufzeit:sekunden{geraet=\"$geraet\"}", "instant": true }],
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "value", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 3,
+        "y": 0
       },
-      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "schule:laufzeit:sekunden{geraet=\"$geraet\"}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "description": "Zeit seit dem letzten Start. Ein unerwartet niedriger Wert heisst: Das Geraet wurde neu gestartet, ohne dass es jemand geplant hat."
     },
     {
       "id": 3,
       "type": "gauge",
       "title": "CPU",
-      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "schule:cpu_auslastung:prozent{geraet=\"$geraet\"}", "instant": true }],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 6,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "schule:cpu_auslastung:prozent{geraet=\"$geraet\"}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "percent", "min": 0, "max": 100, "decimals": 0,
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] }
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Aktuelle Auslastung. Kurze Ausschlaege sind normal, dauerhaft hohe Werte kosten die Benutzer Zeit."
     },
     {
       "id": 4,
       "type": "gauge",
       "title": "Arbeitsspeicher",
-      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "schule:speicher_auslastung:prozent{geraet=\"$geraet\"}", "instant": true }],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 9,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "schule:speicher_auslastung:prozent{geraet=\"$geraet\"}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "percent", "min": 0, "max": 100, "decimals": 0,
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 92 }] }
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 92
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Belegt gegen verfuegbar. Steigt „belegt\" stetig, ohne wieder zu fallen, deutet das auf ein Programm hin, das Speicher nicht mehr freigibt."
     },
     {
       "id": 5,
       "type": "stat",
       "title": "Angemeldete Benutzer",
-      "gridPos": { "h": 4, "w": 3, "x": 12, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "windows_logon_logon_type{geraet=\"$geraet\", status=\"interactive\"}", "instant": true }],
-      "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "value", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 0
       },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "windows_logon_logon_type{geraet=\"$geraet\", status=\"interactive\"}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "description": "Interaktive Anmeldungen. Auf einem Server ausserhalb der Wartung ist alles ueber 1 einen Blick wert."
     },
     {
       "id": 6,
       "type": "stat",
       "title": "Patchstand",
       "description": "Tage seit dem letzten installierten Update.",
-      "gridPos": { "h": 4, "w": 3, "x": 15, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "schule_patch_alter_tage{geraet=\"$geraet\"}", "instant": true }],
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 15,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "schule_patch_alter_tage{geraet=\"$geraet\"}",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "d", "decimals": 0,
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 45 }, { "color": "red", "value": 90 }] }
+          "unit": "d",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 45
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -148,147 +459,483 @@
       "id": 7,
       "type": "stat",
       "title": "Virenschutz",
-      "gridPos": { "h": 4, "w": 3, "x": 18, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "schule_defender_echtzeitschutz{geraet=\"$geraet\"}", "instant": true }],
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 18,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "schule_defender_echtzeitschutz{geraet=\"$geraet\"}",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "0": { "text": "AUS", "color": "red", "index": 0 } } },
-            { "type": "value", "options": { "1": { "text": "aktiv", "color": "green", "index": 1 } } }
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "AUS",
+                  "color": "red",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "aktiv",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
           ],
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Echtzeitschutz des Defender. Ist er aus, wurde er entweder abgeschaltet oder von Schadsoftware ausgeschaltet – beides gehoert sofort geprueft."
     },
     {
       "id": 8,
       "type": "stat",
       "title": "Neustart nötig",
-      "gridPos": { "h": 4, "w": 3, "x": 21, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "schule_neustart_ausstehend{geraet=\"$geraet\"}", "instant": true }],
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 21,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "schule_neustart_ausstehend{geraet=\"$geraet\"}",
+          "instant": true
+        }
+      ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "colorMode": "background", "graphMode": "none", "textMode": "value", "justifyMode": "center"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
       },
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "0": { "text": "nein", "color": "green", "index": 0 } } },
-            { "type": "value", "options": { "1": { "text": "ja", "color": "orange", "index": 1 } } }
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "nein",
+                  "color": "green",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "ja",
+                  "color": "orange",
+                  "index": 1
+                }
+              }
+            }
           ],
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }] }
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
-      }
+      },
+      "description": "Ein Update wartet auf einen Neustart. Bis dahin sind die Korrekturen nicht wirksam."
     },
     {
       "id": 20,
       "type": "timeseries",
       "title": "CPU-Auslastung",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "refId": "A", "expr": "schule:cpu_auslastung:prozent{geraet=\"$geraet\"}", "legendFormat": "CPU gesamt" }],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "schule:cpu_auslastung:prozent{geraet=\"$geraet\"}",
+          "legendFormat": "CPU gesamt"
+        }
+      ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percent", "min": 0, "max": 100,
-          "color": { "mode": "fixed", "fixedColor": "blue" },
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never", "gradientMode": "opacity", "lineInterpolation": "smooth" }
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth"
+          }
         },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Verlauf statt Momentaufnahme: Eine Treppe nach oben ueber Tage ist etwas anderes als ein Zacken am Montagmorgen."
     },
     {
       "id": 21,
       "type": "timeseries",
       "title": "Arbeitsspeicher",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "refId": "A", "expr": "windows_cs_physical_memory_bytes{geraet=\"$geraet\"} - windows_memory_available_bytes{geraet=\"$geraet\"}", "legendFormat": "belegt" },
-        { "refId": "B", "expr": "windows_memory_available_bytes{geraet=\"$geraet\"}", "legendFormat": "frei" }
+        {
+          "refId": "A",
+          "expr": "windows_cs_physical_memory_bytes{geraet=\"$geraet\"} - windows_memory_available_bytes{geraet=\"$geraet\"}",
+          "legendFormat": "belegt"
+        },
+        {
+          "refId": "B",
+          "expr": "windows_memory_available_bytes{geraet=\"$geraet\"}",
+          "legendFormat": "frei"
+        }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 40, "showPoints": "never", "stacking": { "mode": "normal", "group": "A" }, "gradientMode": "opacity" }
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "gradientMode": "opacity"
+          }
         },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Belegt gegen verfuegbar. Steigt „belegt\" stetig, ohne wieder zu fallen, deutet das auf ein Programm hin, das Speicher nicht mehr freigibt."
     },
     {
       "id": 22,
       "type": "timeseries",
       "title": "Netzwerkdurchsatz",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 4 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(windows_net_bytes_received_total{geraet=\"$geraet\"}[5m])) * 8", "legendFormat": "empfangen" },
-        { "refId": "B", "expr": "-sum(rate(windows_net_bytes_sent_total{geraet=\"$geraet\"}[5m])) * 8", "legendFormat": "gesendet" }
+        {
+          "refId": "A",
+          "expr": "sum(rate(windows_net_bytes_received_total{geraet=\"$geraet\"}[5m])) * 8",
+          "legendFormat": "empfangen"
+        },
+        {
+          "refId": "B",
+          "expr": "-sum(rate(windows_net_bytes_sent_total{geraet=\"$geraet\"}[5m])) * 8",
+          "legendFormat": "gesendet"
+        }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "bps",
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 25, "showPoints": "never", "gradientMode": "opacity", "axisSoftMin": 0 }
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 25,
+            "showPoints": "never",
+            "gradientMode": "opacity",
+            "axisSoftMin": 0
+          }
         },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } }
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Empfangen nach oben, gesendet nach unten. Dauerhaft am Anschlag heisst: Die Karte oder die Strecke ist der Engpass."
     },
     {
       "id": 30,
       "type": "table",
       "title": "Datenträger",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "refId": "A", "expr": "windows_logical_disk_size_bytes{geraet=\"$geraet\"}", "instant": true, "format": "table" },
-        { "refId": "B", "expr": "windows_logical_disk_free_bytes{geraet=\"$geraet\"}", "instant": true, "format": "table" }
+        {
+          "refId": "A",
+          "expr": "windows_logical_disk_size_bytes{geraet=\"$geraet\"}",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "windows_logical_disk_free_bytes{geraet=\"$geraet\"}",
+          "instant": true,
+          "format": "table"
+        }
       ],
       "transformations": [
-        { "id": "joinByField", "options": { "byField": "volume", "mode": "outer" } },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "volume",
+            "mode": "outer"
+          }
+        },
         {
           "id": "organize",
           "options": {
-            "excludeByName": { "Time 1": true, "Time 2": true, "__name__ 1": true, "__name__ 2": true, "job 1": true, "job 2": true, "instance 1": true, "instance 2": true, "geraet 1": true, "geraet 2": true, "rolle 1": true, "rolle 2": true, "typ 1": true, "typ 2": true, "standort 1": true, "standort 2": true },
-            "renameByName": { "volume": "Laufwerk", "Value #A": "Größe", "Value #B": "Frei" }
+            "excludeByName": {
+              "Time 1": true,
+              "Time 2": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "job 1": true,
+              "job 2": true,
+              "instance 1": true,
+              "instance 2": true,
+              "geraet 1": true,
+              "geraet 2": true,
+              "rolle 1": true,
+              "rolle 2": true,
+              "typ 1": true,
+              "typ 2": true,
+              "standort 1": true,
+              "standort 2": true
+            },
+            "renameByName": {
+              "volume": "Laufwerk",
+              "Value #A": "Größe",
+              "Value #B": "Frei"
+            }
           }
         }
       ],
       "fieldConfig": {
-        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "Größe" }, "properties": [{ "id": "unit", "value": "bytes" }] },
           {
-            "matcher": { "id": "byName", "options": "Frei" },
+            "matcher": {
+              "id": "byName",
+              "options": "Größe"
+            },
             "properties": [
-              { "id": "unit", "value": "bytes" },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 10000000000 }, { "color": "green", "value": 50000000000 }] } }
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Frei"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 10000000000
+                    },
+                    {
+                      "color": "green",
+                      "value": 50000000000
+                    }
+                  ]
+                }
+              }
             ]
           }
         ]
       },
-      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "fields": "" } }
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "description": "Belegung je Laufwerk. Die Vorwarnung „Platte laeuft voll\" kommt aus der Trend-Hochrechnung und nicht aus dieser Tabelle – hier sieht man den Ist-Stand."
     },
     {
       "id": 31,
       "type": "table",
       "title": "Automatische Dienste, die nicht laufen",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "refId": "A",
@@ -301,21 +948,67 @@
         {
           "id": "organize",
           "options": {
-            "excludeByName": { "Time": true, "Value": true, "__name__": true, "job": true, "instance": true, "state": true, "typ": true, "standort": true, "rolle": true, "geraet": true },
-            "renameByName": { "name": "Dienst", "display_name": "Anzeigename" }
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "job": true,
+              "instance": true,
+              "state": true,
+              "typ": true,
+              "standort": true,
+              "rolle": true,
+              "geraet": true
+            },
+            "renameByName": {
+              "name": "Dienst",
+              "display_name": "Anzeigename"
+            }
           }
         }
       ],
-      "fieldConfig": { "defaults": { "custom": { "align": "auto", "filterable": true } }, "overrides": [] },
-      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "fields": "" } }
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "description": "Dienste, die automatisch starten sollen, es aber nicht tun. Nach einem Neustart kurz normal, danach ein Befund."
     },
     {
       "id": 40,
       "type": "logs",
       "title": "Ereignisprotokoll dieses Geräts",
-      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 20 },
-      "datasource": { "type": "loki", "uid": "loki" },
-      "targets": [{ "refId": "A", "expr": "{job=\"windows_events\", geraet=\"$geraet\"}" }],
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"windows_events\", geraet=\"$geraet\"}"
+        }
+      ],
       "options": {
         "showTime": true,
         "showLabels": true,
@@ -325,7 +1018,24 @@
         "enableLogDetails": true,
         "dedupStrategy": "none",
         "sortOrder": "Descending"
-      }
+      },
+      "description": "Alle eingesammelten Protokolleintraege dieses Geraets. Zum Eingrenzen die Suchleiste oben benutzen."
+    }
+  ],
+  "links": [
+    {
+      "title": "Andere Dashboards",
+      "type": "dashboards",
+      "tags": [
+        "schule"
+      ],
+      "asDropdown": true,
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "Zeitraum und Geraeteauswahl werden mitgenommen",
+      "url": ""
     }
   ]
 }

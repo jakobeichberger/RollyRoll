@@ -109,11 +109,41 @@ Invoke-Abschnitt 'datentraeger' {
     $vorhersagen = Get-CimInstance -Namespace 'root\wmi' `
         -ClassName 'MSStorageDriver_FailurePredictStatus' -ErrorAction SilentlyContinue
 
+    # Die S.M.A.R.T.-Klasse kennt nur eine Geraetekennung wie
+    #   SCSI\Disk&Ven_NVMe&Prod_Samsung\5&1ec5b4a1&0&000000_0
+    # Damit kann im Ernstfall niemand etwas anfangen. Wer eine Platte
+    # tauschen soll, braucht Modell und Seriennummer – und die stehen in
+    # Win32_DiskDrive unter derselben Kennung (dort ohne die angehaengte
+    # Instanznummer). Deshalb hier einmal eine Zuordnung aufbauen.
+    $plattenkennungen = @{}
+    foreach ($laufwerk in (Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction SilentlyContinue)) {
+        if ($laufwerk.PNPDeviceID) {
+            $plattenkennungen[$laufwerk.PNPDeviceID.ToUpperInvariant()] = @{
+                Modell       = [string]$laufwerk.Model
+                Seriennummer = if ($laufwerk.SerialNumber) { ([string]$laufwerk.SerialNumber).Trim() } else { '' }
+            }
+        }
+    }
+
     foreach ($eintrag in $vorhersagen) {
-        $kennung = $eintrag.InstanceName
+        $kennung = [string]$eintrag.InstanceName
+        # Die Instanznummer am Ende (z. B. "_0") gehoert nicht zur PNP-Kennung
+        $gesucht = ($kennung -replace '_\d+$', '').ToUpperInvariant()
+
+        $modell = 'unbekannt'
+        $seriennummer = ''
+        if ($plattenkennungen.ContainsKey($gesucht)) {
+            $modell = $plattenkennungen[$gesucht].Modell
+            $seriennummer = $plattenkennungen[$gesucht].Seriennummer
+        }
+
         Add-Metrik -Name 'schule_datentraeger_ausfall_vorhersage' `
             -Wert ([int][bool]$eintrag.PredictFailure) `
-            -Labels @{ geraetekennung = $kennung } `
+            -Labels @{
+                geraetekennung = $kennung
+                modell         = $modell
+                seriennummer   = $seriennummer
+            } `
             -Hilfe '1 = S.M.A.R.T. sagt einen Ausfall des Datentraegers voraus'
     }
 

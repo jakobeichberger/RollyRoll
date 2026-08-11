@@ -200,8 +200,25 @@ Lizenzkosten, alle Daten bleiben in der Schule.
 deploy/     Das eine Skript für den Hyper-V-Server
 agent/      Windows-Agent (GPO) und Linux-Agent
 stack/      Der komplette Monitoring-Stack der VM
+werkzeuge/  Prüfskripte
 docs/       Anleitungen
+pruefen.sh  Prüft alles auf einmal
 ```
+
+---
+
+## Prüfen
+
+```bash
+./pruefen.sh
+```
+
+17 Prüfungen in etwa zwanzig Sekunden, ohne laufenden Stack und ohne Docker.
+Darunter Regeltests, die erfundene Messwertverläufe durch die echten
+Alarmregeln schicken: Kommt der Alarm, wenn er soll – und schweigt er im
+Normalbetrieb?
+
+→ [docs/13-pruefen.md](docs/13-pruefen.md)
 
 ---
 
@@ -220,6 +237,7 @@ docs/       Anleitungen
 | [10-geraeteerkennung.md](docs/10-geraeteerkennung.md) | Geräte im Netz automatisch finden, Netzplan aus LLDP |
 | [11-verzeichnisdienst.md](docs/11-verzeichnisdienst.md) | Active Directory im Betrieb: Replikation, SYSVOL, FSMO |
 | [12-konfigurationssicherung.md](docs/12-konfigurationssicherung.md) | Nächtliche Sicherung von FortiGate und UniFi |
+| [13-pruefen.md](docs/13-pruefen.md) | Alles durchtesten mit `./pruefen.sh` |
 | [08-fehlersuche.md](docs/08-fehlersuche.md) | Wenn etwas nicht läuft |
 
 ---

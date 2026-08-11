@@ -2,22 +2,71 @@
   "uid": "schule-verzeichnisdienst",
   "title": "Active Directory – Betrieb",
   "description": "Läuft der Laden? Replikation, SYSVOL, FSMO, Anmeldegeschwindigkeit. Die inhaltliche Prüfung des Verzeichnisses steht im Dashboard „Sicherheits-Baseline\".",
-  "tags": ["schule", "ad", "verzeichnisdienst"],
+  "tags": [
+    "schule",
+    "ad",
+    "verzeichnisdienst"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "1m",
   "editable": true,
   "graphTooltip": 1,
-  "time": { "from": "now-24h", "to": "now" },
-  "annotations": { "list": [] },
-  "templating": { "list": [] },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Alarme",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "step": "60s",
+        "tagKeys": "severity,kategorie,geraet",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{geraet}} · {{severity}}",
+        "target": {
+          "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+          "refId": "Anno"
+        },
+        "useValueForTime": false
+      }
+    ]
+  },
+  "templating": {
+    "list": []
+  },
   "panels": [
     {
       "id": 100,
       "type": "row",
       "title": "Auf einen Blick",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "collapsed": false,
       "panels": []
     },
@@ -26,13 +75,31 @@
       "type": "stat",
       "title": "Replikationsfehler",
       "description": "Beziehungen mit einem Fehlercode ungleich 0. Bricht die Replikation, veralten Gruppenrichtlinien und Kennwortänderungen kommen nicht an.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(schule_ad_replikation_fehler_gesamt)", "instant": true }
+        {
+          "refId": "A",
+          "expr": "sum(schule_ad_replikation_fehler_gesamt)",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "background",
         "graphMode": "none",
         "textMode": "auto"
@@ -43,8 +110,14 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
             ]
           }
         },
@@ -56,8 +129,16 @@
       "type": "stat",
       "title": "Älteste Replikation",
       "description": "Wie lange die längste stille Replikationsbeziehung schon still ist. Ab 60 Tagen wird ein DC endgültig ausgeschlossen.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
       "targets": [
         {
           "refId": "A",
@@ -66,7 +147,13 @@
         }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "background",
         "graphMode": "none",
         "textMode": "auto"
@@ -78,9 +165,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 3600 },
-              { "color": "red", "value": 21600 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3600
+              },
+              {
+                "color": "red",
+                "value": 21600
+              }
             ]
           }
         },
@@ -92,13 +188,31 @@
       "type": "stat",
       "title": "LDAP-Antwortzeit",
       "description": "Der beste Frühindikator für „die Anmeldung dauert heute so lang\".",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
       "targets": [
-        { "refId": "A", "expr": "max(schule_ad_ldap_antwortzeit_sekunden)", "instant": true }
+        {
+          "refId": "A",
+          "expr": "max(schule_ad_ldap_antwortzeit_sekunden)",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "background",
         "graphMode": "area",
         "textMode": "auto"
@@ -110,9 +224,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.5 },
-              { "color": "red", "value": 1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
             ]
           }
         },
@@ -124,13 +247,31 @@
       "type": "stat",
       "title": "SYSVOL / NETLOGON",
       "description": "Fehlt eine der beiden Freigaben, verteilt der Domänencontroller keine Gruppenrichtlinien mehr – und damit auch nicht das Agent-Skript.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
       "targets": [
-        { "refId": "A", "expr": "min(schule_ad_freigabe_vorhanden)", "instant": true }
+        {
+          "refId": "A",
+          "expr": "min(schule_ad_freigabe_vorhanden)",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "background",
         "graphMode": "none",
         "textMode": "auto"
@@ -141,12 +282,28 @@
             {
               "type": "value",
               "options": {
-                "0": { "text": "FEHLT", "color": "red", "index": 0 },
-                "1": { "text": "in Ordnung", "color": "green", "index": 1 }
+                "0": {
+                  "text": "FEHLT",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "in Ordnung",
+                  "color": "green",
+                  "index": 1
+                }
               }
             }
           ],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -156,13 +313,31 @@
       "type": "stat",
       "title": "Kontosperrungen (1 h)",
       "description": "Ein plötzlicher Anstieg ist entweder ein Kennwortangriff oder ein Gerät mit gespeichertem altem Kennwort.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(schule_ad_kontosperrungen_1h)", "instant": true }
+        {
+          "refId": "A",
+          "expr": "sum(schule_ad_kontosperrungen_1h)",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "background",
         "graphMode": "area",
         "textMode": "auto"
@@ -173,9 +348,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 11 },
-              { "color": "red", "value": 41 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 11
+              },
+              {
+                "color": "red",
+                "value": 41
+              }
             ]
           }
         },
@@ -186,27 +370,57 @@
       "id": 106,
       "type": "stat",
       "title": "Domänencontroller",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(schule_ad_ist_domaenencontroller)", "instant": true }
+        {
+          "refId": "A",
+          "expr": "sum(schule_ad_ist_domaenencontroller)",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "value",
         "graphMode": "none",
         "textMode": "auto"
       },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
-      }
+      },
+      "description": "Anzahl der DCs, die Pruefwerte liefern. Weicht die Zahl von der bekannten ab, fehlt auf einem der Agent."
     },
     {
       "id": 107,
       "type": "row",
       "title": "Replikation",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
       "collapsed": false,
       "panels": []
     },
@@ -215,8 +429,16 @@
       "type": "table",
       "title": "Replikationsbeziehungen",
       "description": "Fehlercode 0 heißt in Ordnung. Aussagekräftiger ist die Spalte daneben: Ein Partner kann seit Tagen still sein, ohne je einen Fehler gemeldet zu haben.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 9, "w": 14, "x": 0, "y": 7 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 14,
+        "x": 0,
+        "y": 7
+      },
       "targets": [
         {
           "refId": "A",
@@ -232,7 +454,13 @@
         }
       ],
       "transformations": [
-        { "id": "joinByField", "options": { "byField": "partner", "mode": "outer" } },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "partner",
+            "mode": "outer"
+          }
+        },
         {
           "id": "organize",
           "options": {
@@ -266,41 +494,88 @@
       ],
       "options": {
         "showHeader": true,
-        "sortBy": [{ "displayName": "Letzter Erfolg vor", "desc": true }]
+        "sortBy": [
+          {
+            "displayName": "Letzter Erfolg vor",
+            "desc": true
+          }
+        ]
       },
       "fieldConfig": {
-        "defaults": { "custom": { "align": "left", "filterable": true } },
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "filterable": true
+          }
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Letzter Erfolg vor" },
+            "matcher": {
+              "id": "byName",
+              "options": "Letzter Erfolg vor"
+            },
             "properties": [
-              { "id": "unit", "value": "s" },
-              { "id": "decimals", "value": 0 },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
               {
                 "id": "thresholds",
                 "value": {
                   "mode": "absolute",
                   "steps": [
-                    { "color": "green", "value": null },
-                    { "color": "yellow", "value": 3600 },
-                    { "color": "red", "value": 21600 }
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 3600
+                    },
+                    {
+                      "color": "red",
+                      "value": 21600
+                    }
                   ]
                 }
               }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Fehlercode" },
+            "matcher": {
+              "id": "byName",
+              "options": "Fehlercode"
+            },
             "properties": [
-              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
               {
                 "id": "thresholds",
                 "value": {
                   "mode": "absolute",
                   "steps": [
-                    { "color": "green", "value": null },
-                    { "color": "red", "value": 1 }
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
                   ]
                 }
               }
@@ -314,8 +589,16 @@
       "type": "timeseries",
       "title": "Zeit seit der letzten erfolgreichen Replikation",
       "description": "Eine Treppe nach oben heißt: Es repliziert nichts mehr. Sägezähne sind der Normalfall.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 7 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 10,
+        "x": 14,
+        "y": 7
+      },
       "targets": [
         {
           "refId": "A",
@@ -324,13 +607,24 @@
         }
       ],
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5 }
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 5
+          }
         },
         "overrides": []
       }
@@ -339,7 +633,12 @@
       "id": 110,
       "type": "row",
       "title": "SYSVOL, FSMO und Anmeldung",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
       "collapsed": false,
       "panels": []
     },
@@ -348,10 +647,23 @@
       "type": "table",
       "title": "FSMO-Rollen",
       "description": "Ohne PDC-Emulator brechen Kennwortänderungen und Zeitsynchronisierung, ohne RID-Master lassen sich keine neuen Konten mehr anlegen.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 17 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 17
+      },
       "targets": [
-        { "refId": "A", "expr": "schule_ad_fsmo_erreichbar", "instant": true, "format": "table" }
+        {
+          "refId": "A",
+          "expr": "schule_ad_fsmo_erreichbar",
+          "instant": true,
+          "format": "table"
+        }
       ],
       "transformations": [
         {
@@ -369,16 +681,29 @@
               "inhaber": "Gehalten von",
               "Value": "Antwortet"
             },
-            "indexByName": { "rolle": 0, "inhaber": 1, "Value": 2 }
+            "indexByName": {
+              "rolle": 0,
+              "inhaber": 1,
+              "Value": 2
+            }
           }
         }
       ],
-      "options": { "showHeader": true },
+      "options": {
+        "showHeader": true
+      },
       "fieldConfig": {
-        "defaults": { "custom": { "align": "left" } },
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Antwortet" },
+            "matcher": {
+              "id": "byName",
+              "options": "Antwortet"
+            },
             "properties": [
               {
                 "id": "mappings",
@@ -386,13 +711,26 @@
                   {
                     "type": "value",
                     "options": {
-                      "0": { "text": "nein", "color": "red", "index": 0 },
-                      "1": { "text": "ja", "color": "green", "index": 1 }
+                      "0": {
+                        "text": "nein",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "ja",
+                        "color": "green",
+                        "index": 1
+                      }
                     }
                   }
                 ]
               },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
             ]
           }
         ]
@@ -403,16 +741,34 @@
       "type": "table",
       "title": "SYSVOL-Replikation (DFSR)",
       "description": "Zustand 4 ist normal. 5 heißt Fehler, 2 heißt Erstsynchronisierung – über Stunden hinweg ebenfalls ein Befund.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 17 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 17
+      },
       "targets": [
-        { "refId": "A", "expr": "schule_ad_dfsr_zustand", "instant": true, "format": "table" }
+        {
+          "refId": "A",
+          "expr": "schule_ad_dfsr_zustand",
+          "instant": true,
+          "format": "table"
+        }
       ],
       "transformations": [
         {
           "id": "organize",
           "options": {
-            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true },
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true
+            },
             "renameByName": {
               "geraet": "Domänencontroller",
               "ordner": "Ordner",
@@ -422,12 +778,21 @@
           }
         }
       ],
-      "options": { "showHeader": true },
+      "options": {
+        "showHeader": true
+      },
       "fieldConfig": {
-        "defaults": { "custom": { "align": "left" } },
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Zustand" },
+            "matcher": {
+              "id": "byName",
+              "options": "Zustand"
+            },
             "properties": [
               {
                 "id": "mappings",
@@ -435,17 +800,46 @@
                   {
                     "type": "value",
                     "options": {
-                      "0": { "text": "unbekannt", "color": "text", "index": 0 },
-                      "1": { "text": "bereit", "color": "yellow", "index": 1 },
-                      "2": { "text": "Erstsynchronisierung", "color": "yellow", "index": 2 },
-                      "3": { "text": "Wiederherstellung", "color": "orange", "index": 3 },
-                      "4": { "text": "normal", "color": "green", "index": 4 },
-                      "5": { "text": "FEHLER", "color": "red", "index": 5 }
+                      "0": {
+                        "text": "unbekannt",
+                        "color": "text",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "bereit",
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "Erstsynchronisierung",
+                        "color": "yellow",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "Wiederherstellung",
+                        "color": "orange",
+                        "index": 3
+                      },
+                      "4": {
+                        "text": "normal",
+                        "color": "green",
+                        "index": 4
+                      },
+                      "5": {
+                        "text": "FEHLER",
+                        "color": "red",
+                        "index": 5
+                      }
                     }
                   }
                 ]
               },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
             ]
           }
         ]
@@ -456,8 +850,16 @@
       "type": "timeseries",
       "title": "LDAP-Antwortzeit im Verlauf",
       "description": "Steigt die Kurve über Tage langsam an, wird der Domänencontroller knapp – meist Arbeitsspeicher oder Plattenlatenz auf der NTDS-Datenbank.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 17 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 17
+      },
       "targets": [
         {
           "refId": "A",
@@ -466,19 +868,36 @@
         }
       ],
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
           "decimals": 3,
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
             ]
           }
         },
@@ -489,7 +908,12 @@
       "id": 114,
       "type": "row",
       "title": "Konfigurationssicherung der Netzgeräte",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
       "collapsed": false,
       "panels": []
     },
@@ -497,8 +921,16 @@
       "id": 115,
       "type": "stat",
       "title": "Letzte Sicherung",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 26 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 0,
+        "y": 26
+      },
       "targets": [
         {
           "refId": "A",
@@ -507,7 +939,13 @@
         }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "background",
         "graphMode": "none",
         "textMode": "auto"
@@ -519,33 +957,67 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 100000 },
-              { "color": "red", "value": 172800 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100000
+              },
+              {
+                "color": "red",
+                "value": 172800
+              }
             ]
           }
         },
         "overrides": []
-      }
+      },
+      "description": "Zeit seit der letzten Konfigurationssicherung. Der Zeitgeber laeuft naechtlich um 03:20."
     },
     {
       "id": 116,
       "type": "stat",
       "title": "Gespeicherte Stände",
       "description": "Jede Änderung erzeugt einen neuen Stand. Auf der VM ansehen mit: git -C /opt/schulmonitoring/konfig log",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 5, "x": 5, "y": 26 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 5,
+        "y": 26
+      },
       "targets": [
-        { "refId": "A", "expr": "schule_konfig_staende_gesamt", "instant": true }
+        {
+          "refId": "A",
+          "expr": "schule_konfig_staende_gesamt",
+          "instant": true
+        }
       ],
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "colorMode": "value",
         "graphMode": "area",
         "textMode": "auto"
       },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       }
     },
@@ -554,14 +1026,33 @@
       "type": "timeseries",
       "title": "Wann sich etwas geändert hat",
       "description": "Ein Ausschlag außerhalb der Schulzeit ist ein Befund – da arbeitet normalerweise niemand an Firewall oder Controller.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 14, "x": 10, "y": 26 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 14,
+        "x": 10,
+        "y": 26
+      },
       "targets": [
-        { "refId": "A", "expr": "schule_konfig_geaendert", "legendFormat": "Änderung" }
+        {
+          "refId": "A",
+          "expr": "schule_konfig_geaendert",
+          "legendFormat": "Änderung"
+        }
       ],
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -577,6 +1068,22 @@
         },
         "overrides": []
       }
+    }
+  ],
+  "links": [
+    {
+      "title": "Andere Dashboards",
+      "type": "dashboards",
+      "tags": [
+        "schule"
+      ],
+      "asDropdown": true,
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "Zeitraum und Geraeteauswahl werden mitgenommen",
+      "url": ""
     }
   ]
 }
