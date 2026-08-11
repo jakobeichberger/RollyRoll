@@ -55,10 +55,17 @@ inhibit_rules:
     target_matchers: [kategorie =~ "dienste|kapazitaet|leistung"]
     equal: [geraet]
 
-  # Kritisch schlaegt Warnung fuer denselben Alarm am selben Geraet
-  - source_matchers: [severity = critical]
-    target_matchers: [severity = warning]
-    equal: [alertname, geraet]
+  # Bei gestaffelten Alarmen (etwa SSD-Verschleiss 80 % und 90 %) soll
+  # nur die schwerere Meldung herausgehen, nicht beide.
+  #
+  # Die Kennzeichnung "paar" muss auf BEIDEN Seiten vorhanden sein.
+  # Ohne diese Bedingung wuerde ein beliebiger kritischer Alarm alle
+  # Warnungen desselben Geraets unterdruecken - auch voellig
+  # unabhaengige. Eine Abgleichung ueber alertname waere umgekehrt
+  # wirkungslos, weil gestaffelte Alarme unterschiedlich heissen.
+  - source_matchers: [severity = critical, paar =~ ".+"]
+    target_matchers: [severity =~ "warning|info", paar =~ ".+"]
+    equal: [paar, geraet]
 
   # Faellt der ganze Switch aus, nicht ueber jeden Port einzeln alarmieren
   - source_matchers: [alertname = WichtigesGeraetNichtErreichbar]

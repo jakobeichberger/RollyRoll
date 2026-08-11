@@ -90,9 +90,16 @@ Datensicherung veraltet. Der Alertmanager unterdrückt das:
 
 * Ist ein Server offline, kommen keine Meldungen mehr zu Diensten,
   Kapazität oder Leistung desselben Geräts.
-* Meldet ein Gerät `critical`, entfällt die gleichlautende `warning`.
+* Bei **gestaffelten** Alarmen geht nur die schwerere Meldung raus. SSD-Verschleiß
+  etwa warnt bei 80 % und ist kritisch bei 90 % – ab 90 % kommt nur noch die
+  kritische Meldung. Betroffen sind acht Paare; erkennbar an der Kennzeichnung
+  `paar` in der Regeldatei.
 * Ist ein ganzer Switch nicht erreichbar, entfallen die Meldungen zu
   einzelnen Ports.
+
+> Die Staffelung wirkt **nur** zwischen Alarmen mit derselben `paar`-Kennzeichnung.
+> Ein beliebiger kritischer Alarm unterdrückt also nicht die übrigen Warnungen
+> desselben Geräts – die haben in aller Regel nichts miteinander zu tun.
 
 Umgekehrt gibt es eine Regel, die zuschlägt, wenn mehr als 30 % aller
 Agenten gleichzeitig offline gehen. Das ist dann kein Geräteproblem,
@@ -143,6 +150,9 @@ Die Regeln liegen in `/opt/schulmonitoring/stack/prometheus/rules/`:
 | `40-netzwerk.yml` | SNMP, UniFi, FortiGate |
 | `50-sicherheits-baseline.yml` | Abweichungen von der Grundhärtung |
 | `60-leistung.yml` | Leistungs- und Fehlerdaten der Hardware |
+| `70-erkennung.yml` | Neue und unerfasste Geräte im Netz |
+| `80-verzeichnisdienst.yml` | Active Directory im Betrieb |
+| `90-konfiguration-netzplan.yml` | Konfigurationssicherung und Netzplan |
 
 Eine eigene Regel, zum Beispiel für den Server der Schulverwaltung:
 

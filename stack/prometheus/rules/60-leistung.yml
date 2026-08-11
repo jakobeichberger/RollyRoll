@@ -62,7 +62,7 @@ groups:
            or schule:datentraeger_latenz_schreiben:sekunden > 0.025)
           and on (geraet, volume) schule:datentraeger_iops:gesamt > 5
         for: 20m
-        labels: { severity: warning, kategorie: leistung, vorwarnung: "ja" }
+        labels: { severity: warning, kategorie: leistung, vorwarnung: "ja", paar: datentraeger-latenz }
         annotations:
           summary: "Laufwerk {{ $labels.volume }} auf {{ $labels.geraet }} antwortet in {{ $value | humanizeDuration }}"
           description: >-
@@ -76,7 +76,7 @@ groups:
            or schule:datentraeger_latenz_schreiben:sekunden > 0.1)
           and on (geraet, volume) schule:datentraeger_iops:gesamt > 1
         for: 10m
-        labels: { severity: critical, kategorie: leistung }
+        labels: { severity: critical, kategorie: leistung, paar: datentraeger-latenz }
         annotations:
           summary: "Laufwerk {{ $labels.volume }} auf {{ $labels.geraet }} braucht {{ $value | humanizeDuration }} je Zugriff"
           description: >-

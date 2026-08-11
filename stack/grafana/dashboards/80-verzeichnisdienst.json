@@ -963,18 +963,18 @@
               },
               {
                 "color": "yellow",
-                "value": 100000
+                "value": 7200
               },
               {
                 "color": "red",
-                "value": 172800
+                "value": 21600
               }
             ]
           }
         },
         "overrides": []
       },
-      "description": "Zeit seit der letzten Konfigurationssicherung. Der Zeitgeber laeuft naechtlich um 03:20."
+      "description": "Zeit seit der letzten Konfigurationssicherung. Der Zeitgeber läuft stündlich – über sechs Stunden heißt, dass etwas stockt."
     },
     {
       "id": 116,

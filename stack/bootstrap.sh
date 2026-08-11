@@ -291,13 +291,20 @@ EOF
 
 cat > /etc/systemd/system/schulmonitoring-konfig.timer <<'EOF'
 [Unit]
-Description=Naechtliche Konfigurationssicherung der Netzgeraete
+Description=Konfigurationssicherung der Netzgeraete
 
 [Timer]
-OnCalendar=*-*-* 03:20:00
-# Nach einem Ausfall nachholen, statt einen Tag zu ueberspringen
+# Stuendlich, nicht naechtlich. Der Grund ist nicht die Sicherung selbst –
+# dafuer waere einmal taeglich genug – sondern die Aussage "wann wurde
+# geaendert". Bei einem naechtlichen Lauf wird JEDE Aenderung um 03:20
+# erkannt, auch eine vom Vortag um 14:00. Damit liesse sich eine
+# Aenderung ausserhalb der Schulzeit gar nicht von einer normalen
+# unterscheiden. Stuendlich stimmt der Erkennungszeitpunkt auf eine
+# Stunde genau mit dem Aenderungszeitpunkt ueberein.
+OnCalendar=hourly
+# Nach einem Ausfall einmal nachholen, statt die Luecke zu lassen
 Persistent=true
-RandomizedDelaySec=600
+RandomizedDelaySec=300
 
 [Install]
 WantedBy=timers.target

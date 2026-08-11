@@ -20,7 +20,7 @@ groups:
             count_over_time({job="windows_events", channel="Security"} |= "4625" | json | event_id="4625" [5m])
           ) > 20
         for: 0m
-        labels: { severity: warning, kategorie: security, taktik: "Zugangsdaten erraten" }
+        labels: { severity: warning, kategorie: security, taktik: "Zugangsdaten erraten", paar: bruteforce }
         annotations:
           summary: "{{ $value | printf \"%.0f\" }} fehlgeschlagene Anmeldungen auf {{ $labels.geraet }} in 5 Minuten"
           description: >-
@@ -33,7 +33,7 @@ groups:
             count_over_time({job="windows_events", channel="Security"} |= "4625" | json | event_id="4625" [10m])
           ) > 100
         for: 0m
-        labels: { severity: critical, kategorie: security, taktik: "Zugangsdaten erraten" }
+        labels: { severity: critical, kategorie: security, taktik: "Zugangsdaten erraten", paar: bruteforce }
         annotations:
           summary: "Massiver Anmeldeangriff auf {{ $labels.geraet }} ({{ $value | printf \"%.0f\" }} Fehlversuche/10 min)"
           description: "Konto sperren, Quell-IP auf der FortiGate blockieren, Kennwoerter pruefen."

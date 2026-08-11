@@ -159,13 +159,30 @@ sichere_unifi() {
 
     if curl "${kurven[@]}" -o "$temp" \
          "${basis}${praefix}/api/s/${standort}/rest/${bereich}" 2>/dev/null; then
-      # Sortiert und eingerueckt ablegen, sonst erzeugt schon eine
-      # geaenderte Reihenfolge einen scheinbaren Unterschied.
-      if python3 -c "
-import json, sys
-roh = json.load(open('$temp'))
-daten = roh.get('data', roh)
-json.dump(daten, open('$ziel', 'w'), indent=2, sort_keys=True, ensure_ascii=False)
+      # Sortiert und eingerueckt ablegen. Beides ist noetig:
+      #
+      #   sort_keys ordnet die Felder INNERHALB eines Objekts.
+      #   Die Liste selbst muss zusaetzlich sortiert werden – der
+      #   Controller liefert die Objekte in der Reihenfolge seiner
+      #   Datenbank, und die aendert sich gelegentlich von selbst.
+      #   Ohne diese Sortierung meldet die Sicherung eine Aenderung,
+      #   obwohl sich inhaltlich nichts getan hat. Nach zwei solchen
+      #   Nachrichten schaut niemand mehr hin.
+      if TEMP="$temp" ZIEL="$ziel" python3 -c "
+import json, os
+
+with open(os.environ['TEMP'], encoding='utf-8') as f:
+    roh = json.load(f)
+
+daten = roh.get('data', roh) if isinstance(roh, dict) else roh
+if isinstance(daten, list):
+    daten = sorted(daten, key=lambda e: json.dumps(
+        (e.get('_id') or e.get('name') or e) if isinstance(e, dict) else e,
+        sort_keys=True))
+
+with open(os.environ['ZIEL'], 'w', encoding='utf-8') as f:
+    json.dump(daten, f, indent=2, sort_keys=True, ensure_ascii=False)
+    f.write('\n')
 " 2>/dev/null; then
         gesamt=$((gesamt + 1))
       else

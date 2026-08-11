@@ -30,7 +30,7 @@ groups:
       - alert: SsdVerschleissHoch
         expr: schule_datentraeger_verschleiss_prozent >= 80
         for: 1h
-        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja" }
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja", paar: ssd-verschleiss }
         annotations:
           summary: "SSD-Verschleiss {{ $value | printf \"%.0f\" }} % in {{ $labels.geraet }}"
           description: "Ersatzbeschaffung fuer {{ $labels.modell }} einplanen."
@@ -38,7 +38,7 @@ groups:
       - alert: SsdVerschleissKritisch
         expr: schule_datentraeger_verschleiss_prozent >= 90
         for: 30m
-        labels: { severity: critical, kategorie: hardware, vorwarnung: "ja" }
+        labels: { severity: critical, kategorie: hardware, vorwarnung: "ja", paar: ssd-verschleiss }
         annotations:
           summary: "SSD am Lebensende in {{ $labels.geraet }} ({{ $value | printf \"%.0f\" }} %)"
           description: "Datentraeger {{ $labels.modell }} sofort tauschen."
@@ -74,7 +74,7 @@ groups:
           100 * windows_logical_disk_free_bytes / windows_logical_disk_size_bytes < 10
           and windows_logical_disk_size_bytes > 0
         for: 30m
-        labels: { severity: warning, kategorie: kapazitaet }
+        labels: { severity: warning, kategorie: kapazitaet, paar: speicherplatz }
         annotations:
           summary: "Laufwerk {{ $labels.volume }} auf {{ $labels.geraet }} zu {{ $value | printf \"%.0f\" }} % frei"
           description: "Weniger als 10 % freier Speicher."
@@ -84,7 +84,7 @@ groups:
           100 * windows_logical_disk_free_bytes / windows_logical_disk_size_bytes < 4
           and windows_logical_disk_size_bytes > 0
         for: 10m
-        labels: { severity: critical, kategorie: kapazitaet }
+        labels: { severity: critical, kategorie: kapazitaet, paar: speicherplatz }
         annotations:
           summary: "Laufwerk {{ $labels.volume }} auf {{ $labels.geraet }} laeuft voll"
           description: "Nur noch {{ $value | printf \"%.1f\" }} % frei."
@@ -127,7 +127,7 @@ groups:
       - alert: SpeicherTemperaturHoch
         expr: schule_temperatur_celsius > 75
         for: 15m
-        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja" }
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja", paar: speichertemperatur }
         annotations:
           summary: "{{ $labels.sensor }} auf {{ $labels.geraet }} bei {{ $value | printf \"%.0f\" }} °C"
           description: "Kuehlung, Luefter und Raumtemperatur pruefen."
@@ -135,7 +135,7 @@ groups:
       - alert: SpeicherTemperaturKritisch
         expr: schule_temperatur_celsius > 88
         for: 5m
-        labels: { severity: critical, kategorie: hardware }
+        labels: { severity: critical, kategorie: hardware, paar: speichertemperatur }
         annotations:
           summary: "Ueberhitzung auf {{ $labels.geraet }}: {{ $value | printf \"%.0f\" }} °C"
           description: "Das System drosselt oder schaltet sich gleich ab."

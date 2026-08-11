@@ -150,7 +150,7 @@ groups:
       - alert: VieleKontosperrungen
         expr: schule_ad_kontosperrungen_1h > 10
         for: 5m
-        labels: { severity: warning, kategorie: security }
+        labels: { severity: warning, kategorie: security, paar: kontosperrungen }
         annotations:
           summary: "{{ $value }} Kontosperrungen in der letzten Stunde"
           description: >-
@@ -162,7 +162,7 @@ groups:
       - alert: SehrVieleKontosperrungen
         expr: schule_ad_kontosperrungen_1h > 40
         for: 2m
-        labels: { severity: critical, kategorie: security }
+        labels: { severity: critical, kategorie: security, paar: kontosperrungen }
         annotations:
           summary: "{{ $value }} Kontosperrungen in der letzten Stunde"
           description: >-

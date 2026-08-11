@@ -77,6 +77,7 @@ tests:
               severity: warning
               kategorie: hardware
               vorwarnung: "ja"
+              paar: ssd-verschleiss
               geraet: srv-hyperv-01
               modell: Samsung SSD 970 EVO 1TB
               seriennummer: S4EWNX0N123456
@@ -267,6 +268,7 @@ tests:
           - exp_labels:
               severity: warning
               kategorie: security
+              paar: kontosperrungen
               geraet: dc02
             exp_annotations:
               summary: "25 Kontosperrungen in der letzten Stunde"
@@ -344,6 +346,60 @@ tests:
                 Meist ein abgelaufenes API-Token oder ein geaendertes Kennwort.
                 Auf der VM nachsehen mit: journalctl -u schulmonitoring-konfig
                 --since today
+
+  - interval: 1m
+    name: "Nachtaenderung meldet nur einmal, nicht am Abend erneut"
+    # Der Fall, der beim Bauen falsch war: schule_konfig_geaendert bleibt
+    # bis zum naechsten Lauf auf 1. Ohne Frischepruefung meldete derselbe
+    # Befund am Abend ein zweites Mal - mit der falschen Aussage, es sei
+    # gerade eben etwas geaendert worden.
+    input_series:
+      # Lauf um 02:00 UTC erkennt eine Aenderung
+      - series: 'schule_konfig_geaendert'
+        values: "0+0x120 1+0x1200"
+      # Zeitstempel bleibt auf dem Zeitpunkt dieses Laufs stehen
+      - series: 'schule_konfig_sicherung_zeitstempel'
+        values: "7200+0x1320"
+    alert_rule_test:
+      # Kurz nach dem Lauf (02:10 UTC): meldet, ist Nacht, Wert ist frisch
+      - eval_time: 130m
+        alertname: NetzkonfigurationNachtsGeaendert
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kategorie: security
+            exp_annotations:
+              summary: "Netzkonfiguration wurde ausserhalb der Schulzeit geaendert"
+              description: "Zwischen 21 und 5 Uhr arbeitet normalerweise niemand an Firewall oder Controller. Nachsehen, was sich geaendert hat: git -C /opt/schulmonitoring/konfig show HEAD Achtung: Die Uhrzeit wird in UTC ausgewertet."
+      # 21:30 UTC am selben Tag: wieder Nachtfenster, Wert steht noch auf 1 -
+      # darf aber NICHT erneut melden, weil der Befund Stunden alt ist.
+      - eval_time: 1290m
+        alertname: NetzkonfigurationNachtsGeaendert
+        exp_alerts: []
+
+  - interval: 1m
+    name: "Tagsueber erkannte Aenderung loest keinen Sicherheitsalarm aus"
+    input_series:
+      # Lauf um 10:00 UTC erkennt eine Aenderung
+      - series: 'schule_konfig_geaendert'
+        values: "0+0x600 1+0x200"
+      - series: 'schule_konfig_sicherung_zeitstempel'
+        values: "36000+0x800"
+    alert_rule_test:
+      # 10:10 UTC: frisch, aber mitten am Tag
+      - eval_time: 610m
+        alertname: NetzkonfigurationNachtsGeaendert
+        exp_alerts: []
+      # Der harmlose Hinweis kommt trotzdem
+      - eval_time: 610m
+        alertname: NetzkonfigurationGeaendert
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              kategorie: sicherung
+            exp_annotations:
+              summary: "Die Konfiguration eines Netzgeraets hat sich geaendert"
+              description: "Was genau, zeigt auf der VM: git -C /opt/schulmonitoring/konfig show HEAD"
 
   # =================================================================== #
   # Netzplan

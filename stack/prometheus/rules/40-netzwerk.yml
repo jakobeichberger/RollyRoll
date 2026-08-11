@@ -153,7 +153,7 @@ groups:
       - alert: FortiGateSpeicherHoch
         expr: fortigate_memory_usage_ratio > 0.85
         for: 20m
-        labels: { severity: warning, kategorie: firewall, vorwarnung: "ja" }
+        labels: { severity: warning, kategorie: firewall, vorwarnung: "ja", paar: fortigate-speicher }
         annotations:
           summary: "FortiGate-Speicher bei {{ $value | humanizePercentage }}"
           description: >-
@@ -163,7 +163,7 @@ groups:
       - alert: FortiGateKonservierungsmodus
         expr: fortigate_memory_usage_ratio > 0.88
         for: 5m
-        labels: { severity: critical, kategorie: firewall }
+        labels: { severity: critical, kategorie: firewall, paar: fortigate-speicher }
         annotations:
           summary: "FortiGate droht in den Konservierungsmodus zu gehen"
           description: "Sofort pruefen – sonst kommt die Schule nicht mehr ins Internet."

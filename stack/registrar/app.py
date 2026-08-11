@@ -62,7 +62,17 @@ ERKENNUNG_NETZE = [
 ]
 # "automatisch" = Fundstuecke werden sofort mitueberwacht.
 # "vorschlag"   = nur auflisten, der Mensch entscheidet.
+#
+# Ein Tippfehler darf hier nicht stillschweigend dazu fuehren, dass nichts
+# ueberwacht wird – das faellt sonst erst auf, wenn ein Geraet ausfaellt,
+# das man laengst im Dashboard glaubte.
+_ERKENNUNG_MODI = ("automatisch", "vorschlag")
 ERKENNUNG_MODUS = os.environ.get("ERKENNUNG_MODUS", "automatisch").strip().lower()
+if ERKENNUNG_MODUS not in _ERKENNUNG_MODI:
+    _MODUS_TIPPFEHLER = ERKENNUNG_MODUS
+    ERKENNUNG_MODUS = "automatisch"
+else:
+    _MODUS_TIPPFEHLER = ""
 ERKENNUNG_INTERVALL_MINUTEN = int(os.environ.get("ERKENNUNG_INTERVALL_MINUTEN", "60"))
 ERKENNUNG_HOECHSTZAHL = int(os.environ.get("ERKENNUNG_HOECHSTZAHL", "4096"))
 # LLDP-Nachbarschaft mit abfragen: liefert den Netzplan, kostet aber je
@@ -587,6 +597,13 @@ def erkennungsarbeit() -> None:
     if not ERKENNUNG_NETZE and not UNIFI_URL:
         log.info("Geraeteerkennung ist ausgeschaltet (ERKENNUNG_NETZE ist leer)")
         return
+
+    if _MODUS_TIPPFEHLER:
+        log.warning(
+            "ERKENNUNG_MODUS=%r ist unbekannt – erlaubt sind %s. "
+            "Es wird 'automatisch' verwendet.",
+            _MODUS_TIPPFEHLER, " und ".join(_ERKENNUNG_MODI),
+        )
 
     log.info(
         "Geraeteerkennung aktiv: Netze %s, Modus %s, alle %d Minuten",

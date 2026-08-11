@@ -152,7 +152,32 @@ Invoke-Abschnitt 'replikation' {
     if (-not $AdModulDa) { return }
 
     $partner = Get-ADReplicationPartnerMetadata -Target $env:COMPUTERNAME `
-        -Partition * -ErrorAction Stop
+        -Partition * -ErrorAction SilentlyContinue
+
+    if (-not $partner) {
+        # Keine Replikationspartner ist bei einer Domaene mit nur einem
+        # Domaenencontroller voellig normal – und das ist in Schulen der
+        # haeufigste Fall. Ohne diese Unterscheidung wuerde der Abschnitt
+        # dort dauerhaft als fehlgeschlagen gelten und eine Meldung
+        # erzeugen, die niemand abstellen kann.
+        $anzahlDcs = 1
+        try {
+            $anzahlDcs = @((Get-ADDomain -ErrorAction Stop).ReplicaDirectoryServers).Count
+        } catch {
+            Write-Verbose "Anzahl der Domaenencontroller nicht ermittelbar: $($_.Exception.Message)"
+        }
+
+        Add-Metrik -Name 'schule_ad_replikation_partner_gesamt' -Wert 0 `
+            -Hilfe 'Anzahl der Replikationsbeziehungen dieses Domaenencontrollers'
+        Add-Metrik -Name 'schule_ad_replikation_fehler_gesamt' -Wert 0 `
+            -Hilfe 'Anzahl der Replikationsbeziehungen mit Fehler'
+
+        if ($anzahlDcs -gt 1) {
+            # Mehrere DCs, aber kein Partner: Das ist sehr wohl ein Befund.
+            throw "Keine Replikationspartner gefunden, obwohl die Domaene $anzahlDcs Domaenencontroller hat."
+        }
+        return
+    }
 
     $fehlerGesamt = 0
     $anzahl = 0

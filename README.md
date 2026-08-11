@@ -140,7 +140,7 @@ Läuft ausschließlich auf Domänencontrollern, richtet sich selbst ein.
 
 ### Konfigurationssicherung
 
-Jede Nacht werden FortiGate und UniFi-Controller ausgelesen und in einem
+Stündlich werden FortiGate und UniFi-Controller ausgelesen und in einem
 Git-Verzeichnis abgelegt. Stirbt ein Gerät, steht der letzte Stand bereit.
 Und jede Änderung wird sichtbar: Kommt nachts um drei eine Firewall-Regel
 dazu, die niemand angelegt hat, ist das ein Befund.

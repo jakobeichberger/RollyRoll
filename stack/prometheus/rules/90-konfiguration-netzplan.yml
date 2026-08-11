@@ -16,15 +16,18 @@ groups:
             Auf der VM nachsehen mit:
             journalctl -u schulmonitoring-konfig --since today
 
+      # Der Zeitgeber laeuft stuendlich. Sechs Stunden Stille lassen ein
+      # paar verpasste Laeufe zu, ohne dass ein echter Ausfall tagelang
+      # unbemerkt bleibt.
       - alert: KeineKonfigurationssicherungMehr
-        expr: (time() - schule_konfig_sicherung_zeitstempel) > 172800
-        for: 1h
+        expr: (time() - schule_konfig_sicherung_zeitstempel) > 21600
+        for: 30m
         labels: { severity: warning, kategorie: sicherung }
         annotations:
-          summary: "Seit ueber zwei Tagen keine Konfigurationssicherung"
+          summary: "Seit ueber sechs Stunden keine Konfigurationssicherung"
           description: >-
-            Der Zeitgeber laeuft nicht. Pruefen mit:
-            systemctl status schulmonitoring-konfig.timer
+            Der Zeitgeber laeuft stuendlich, hier stockt also etwas.
+            Pruefen mit: systemctl status schulmonitoring-konfig.timer
 
       # Der eigentliche Sicherheitsnutzen. Absichtlich nur "info": Wer
       # tagsueber an der Firewall arbeitet, soll keine Warnung bekommen.
@@ -40,11 +43,21 @@ groups:
             git -C /opt/schulmonitoring/konfig show HEAD
 
       # Eine Aenderung ausserhalb der Schulzeit hat niemand aus dem Team
-      # gemacht. Der Zeitgeber laeuft um 03:20, deshalb greift die Regel
-      # nur, wenn die Aenderung selbst in die Nacht faellt.
+      # gemacht.
+      #
+      # Der Zusatz mit dem Zeitstempel ist wesentlich: schule_konfig_geaendert
+      # bleibt bis zum naechsten Lauf auf 1. Ohne die Frischepruefung wuerde
+      # eine morgens erkannte Aenderung am selben Abend um 21 Uhr ein
+      # zweites Mal melden – und dann sogar mit der falschen Aussage, es
+      # sei gerade eben etwas geaendert worden.
+      #
+      # Dass der Erkennungszeitpunkt ueberhaupt etwas ueber den
+      # Aenderungszeitpunkt aussagt, liegt am stuendlichen Zeitgeber.
+      # Bei einem naechtlichen Lauf waere jede Aenderung eine "Nachtaenderung".
       - alert: NetzkonfigurationNachtsGeaendert
         expr: |
           schule_konfig_geaendert == 1
+          and (time() - schule_konfig_sicherung_zeitstempel) < 5400
           and on() (hour() < 5 or hour() > 20)
         for: 5m
         labels: { severity: warning, kategorie: security }

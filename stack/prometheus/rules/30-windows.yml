@@ -75,7 +75,7 @@ groups:
       - alert: PatchstandVeraltet
         expr: schule_patch_alter_tage > 45
         for: 12h
-        labels: { severity: warning, kategorie: security, vorwarnung: "ja" }
+        labels: { severity: warning, kategorie: security, vorwarnung: "ja", paar: patchstand }
         annotations:
           summary: "{{ $labels.geraet }} hat seit {{ $value | printf \"%.0f\" }} Tagen keine Updates bekommen"
           description: "Ungepatchte Systeme sind das haeufigste Einfallstor."
@@ -83,7 +83,7 @@ groups:
       - alert: PatchstandKritisch
         expr: schule_patch_alter_tage > 90
         for: 12h
-        labels: { severity: critical, kategorie: security }
+        labels: { severity: critical, kategorie: security, paar: patchstand }
         annotations:
           summary: "{{ $labels.geraet }} seit {{ $value | printf \"%.0f\" }} Tagen ohne Updates"
 
