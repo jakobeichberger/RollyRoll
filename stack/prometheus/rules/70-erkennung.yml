@@ -1,0 +1,104 @@
+---
+# Geraeteerkennung.
+#
+# Zwei sehr unterschiedliche Zwecke in einer Datei:
+#
+#   1. Betrieb – merkt jemand, wenn ein neuer Switch dazukommt? Der Sinn
+#      der Erkennung ist ja, dass niemand mehr Listen pflegen muss.
+#
+#   2. Sicherheit – ein Geraet, das im Servernetz auftaucht und dort nichts
+#      zu suchen hat, ist ein Befund. In einer Schule ist das haeufiger ein
+#      privater Router im Klassenzimmer als ein Angriff, aber beides gehoert
+#      gesehen.
+groups:
+
+  - name: erkennung-neue-geraete
+    rules:
+
+      # Absichtlich info und nicht warning: Beim ersten Suchlauf nach der
+      # Installation ist erst einmal ALLES neu. Wer das als Warnung bekaeme,
+      # wuerde die Erkennung am selben Tag abschalten.
+      - alert: NeuesGeraetImNetz
+        expr: |
+          schule_erkanntes_geraet{erfasst="nein"} == 1
+          and on(geraet, adresse)
+              (time() - schule_erkanntes_geraet_erste_sichtung_zeitstempel) < 86400
+        for: 15m
+        labels: { severity: info, kategorie: erkennung }
+        annotations:
+          summary: "Neues Geraet im Netz: {{ $labels.geraet }} ({{ $labels.adresse }})"
+          description: >-
+            Erkannt als {{ $labels.typ }} von {{ $labels.hersteller }},
+            gefunden ueber {{ $labels.quelle }}. Es wird bereits ueberwacht.
+            Fuer einen sprechenden Namen und den Raum den Eintrag aus
+            inventar/gefunden.yml nach inventar.yml uebernehmen.
+
+      # Ein unbekanntes Geraet im Servernetz ist etwas anderes als eines im
+      # Klassennetz. Welche Netze das sind, steht in der Anmerkung – die
+      # Auswahl unten bitte an die eigene Adressvergabe anpassen.
+      - alert: UnbekanntesGeraetImServernetz
+        expr: |
+          schule_erkanntes_geraet{erfasst="nein", adresse=~"10\\.0\\.0\\..*"} == 1
+          and on(geraet, adresse)
+              (time() - schule_erkanntes_geraet_erste_sichtung_zeitstempel) < 86400
+        for: 15m
+        labels: { severity: warning, kategorie: security }
+        annotations:
+          summary: "Unbekanntes Geraet im Servernetz: {{ $labels.adresse }}"
+          description: >-
+            {{ $labels.geraet }} ({{ $labels.hersteller }}, {{ $labels.typ }})
+            antwortet im Servernetz, steht aber weder im Inventar noch hat es
+            einen Agenten. Bitte nachsehen, was das ist. Der Adressbereich in
+            dieser Regel ist auf 10.0.0.0/24 eingestellt.
+
+      - alert: VieleUnerfassteGeraete
+        expr: schule_erkennung_unerfasst > 25
+        for: 2h
+        labels: { severity: info, kategorie: erkennung }
+        annotations:
+          summary: "{{ $value }} gefundene Geraete sind noch nicht erfasst"
+          description: >-
+            Sie werden ueberwacht, tragen aber automatisch vergebene Namen.
+            Ein Durchgang durch inventar/gefunden.yml lohnt sich – danach
+            stehen im Dashboard sprechende Namen und Raeume.
+
+  - name: erkennung-betrieb
+    rules:
+
+      - alert: GeraeteerkennungLaeuftNicht
+        expr: |
+          schule_erkennung_aktiv == 1
+          and (time() - schule_erkennung_letzter_lauf_zeitstempel) > 10800
+        for: 15m
+        labels: { severity: warning, kategorie: erkennung }
+        annotations:
+          summary: "Seit ueber drei Stunden kein Suchlauf mehr"
+          description: >-
+            Neue Geraete im Netz fallen damit nicht mehr auf. Protokoll
+            ansehen mit:  docker logs mon-registrar --tail 50
+
+      - alert: SuchlaufDauertZuLange
+        expr: schule_erkennung_dauer_sekunden > 120
+        for: 30m
+        labels: { severity: info, kategorie: erkennung }
+        annotations:
+          summary: "Der Suchlauf braucht {{ $value | printf \"%.0f\" }} Sekunden"
+          description: >-
+            Meist ist ERKENNUNG_NETZE zu weit gefasst oder der
+            UniFi-Controller antwortet langsam. Netze enger fassen
+            (ein /24 je Eintrag) oder das Intervall verlaengern.
+
+      # Wenn ploetzlich deutlich weniger Geraete antworten als sonst, ist
+      # entweder der Suchlauf kaputt oder es ist wirklich etwas passiert.
+      - alert: DeutlichWenigerGeraeteGefunden
+        expr: |
+          schule_erkennung_geraete_gesamt
+            < 0.6 * (max_over_time(schule_erkennung_geraete_gesamt[7d]) > 5)
+        for: 1h
+        labels: { severity: warning, kategorie: erkennung }
+        annotations:
+          summary: "Der Suchlauf findet deutlich weniger Geraete als sonst"
+          description: >-
+            Aktuell {{ $value }}, sonst deutlich mehr. Moegliche Ursachen:
+            SNMP wurde zentral abgeschaltet, ein VLAN ist weggebrochen oder
+            der Community-String stimmt nicht mehr.

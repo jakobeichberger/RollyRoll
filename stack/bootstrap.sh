@@ -100,6 +100,28 @@ if [[ "$(wert MON_HOSTNAME)" == "monitoring.schule.local" ]]; then
     echo "  MON_HOSTNAME auf $EIGENE_IP gesetzt"
 fi
 
+# Suchbereich der Geraeteerkennung: ohne Angabe das eigene Netz nehmen.
+# Wer die VM von Hand aufsetzt, soll nicht erst einen Wert nachschlagen
+# muessen, um Switches und Drucker im Dashboard zu sehen.
+if ! grep -qE "^ERKENNUNG_NETZE=." .env; then
+  EIGENES_NETZ="$(ip -o -4 addr show scope global 2>/dev/null |
+    awk '{print $4}' | head -1 |
+    python3 -c 'import sys,ipaddress
+roh = sys.stdin.read().strip()
+if roh:
+    netz = ipaddress.ip_network(roh, strict=False)
+    # Zu weite Netze sind fuer einen Suchlauf nicht sinnvoll.
+    print(netz if netz.prefixlen >= 22 else "")' 2>/dev/null)"
+
+  if [[ -n "$EIGENES_NETZ" ]]; then
+    setze ERKENNUNG_NETZE "$EIGENES_NETZ"
+    echo "  Geraeteerkennung durchsucht das eigene Netz: $EIGENES_NETZ"
+  else
+    warne "Suchbereich der Geraeteerkennung liess sich nicht bestimmen."
+    warne "Bei Bedarf in .env nachtragen:  ERKENNUNG_NETZE=10.0.0.0/24"
+  fi
+fi
+
 set -a
 # shellcheck disable=SC1091
 source .env

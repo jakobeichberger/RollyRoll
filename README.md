@@ -44,9 +44,13 @@ Beim nächsten Neustart installiert sich jedes Gerät selbst, meldet sich am
 Server an und erscheint im Dashboard. Nichts von Hand eintragen.
 → Ausführlich in [docs/03-gpo-rollout.md](docs/03-gpo-rollout.md)
 
-**3. Netzwerkgeräte eintragen** – Switches, Access Points, Drucker und USV in
-`/opt/schulmonitoring/stack/inventar/inventar.yml` auf der VM. Änderungen
-werden binnen 30 Sekunden ohne Neustart übernommen.
+**3. Netzwerkgeräte** – finden sich selbst. Der Suchlauf klappert stündlich das
+eigene Netz per SNMP ab und fragt den UniFi-Controller; Switches, Access
+Points, Drucker und USV erscheinen von allein im Dashboard. Für sprechende
+Namen und Raumangaben werden sie aus der Fundliste nach
+`/opt/schulmonitoring/stack/inventar/inventar.yml` übernommen – Änderungen
+daran greifen binnen 30 Sekunden ohne Neustart.
+→ [docs/10-geraeteerkennung.md](docs/10-geraeteerkennung.md)
 
 **4. Syslog von FortiGate und UniFi** auf `<VM-IP>:1514/UDP` umlenken.
 → [docs/04-unifi-fortigate.md](docs/04-unifi-fortigate.md)
@@ -103,6 +107,20 @@ FortiGate über REST-API (Last, Sitzungen, VPN) und SNMP (Lüfter, Temperatur,
 Netzteile). Switchports mit Übertragungsfehlern, weil das fast immer ein
 defektes Kabel ankündigt.
 
+### Geräteerkennung – nichts von Hand eintragen
+
+Stündlich eine SNMP-Anfrage an jede Adresse der eigenen Netze, dazu die
+Geräteliste des UniFi-Controllers. Was antwortet, wird nach Hersteller und
+Bauart eingeordnet (Switch, Access Point, Drucker, USV, Firewall) und **sofort
+mitüberwacht** – mit passendem SNMP-Modul, ohne Zutun. Geräte, die später in
+`inventar.yml` einen richtigen Namen bekommen, fallen automatisch aus der
+Fundliste heraus; doppelt überwacht wird nie.
+
+Nebeneffekt fürs Auge: Ein unbekanntes Gerät, das im Servernetz auftaucht,
+löst eine Meldung aus.
+
+→ [docs/10-geraeteerkennung.md](docs/10-geraeteerkennung.md)
+
 ---
 
 ## Aufbau
@@ -145,6 +163,7 @@ Lizenzkosten, alle Daten bleiben in der Schule.
 | **Sicherheit & Angriffserkennung** | Anmeldeversuche, verdächtige Befehle, Firewall-Vorfälle |
 | **Sicherheits-Baseline** | Sind die Geräte überhaupt richtig eingestellt? Erfüllungsgrad je Gerät und Bereich |
 | **Hardware-Leistung & Protokolle** | Antwortzeiten, Fehlerzähler und die Hardware-Meldungen im Klartext |
+| **Geräteerkennung** | Was im Netz gefunden wurde und was davon noch keinen richtigen Namen hat |
 
 ---
 
@@ -171,6 +190,7 @@ docs/       Anleitungen
 | [06-security-monitoring.md](docs/06-security-monitoring.md) | Angriffserkennung und Audit-Einstellungen |
 | [07-betrieb.md](docs/07-betrieb.md) | Sicherung, Updates, Kapazität |
 | [09-hardware.md](docs/09-hardware.md) | Hardware-Protokolle, Leistungs- und Fehlerdaten |
+| [10-geraeteerkennung.md](docs/10-geraeteerkennung.md) | Geräte im Netz automatisch finden und übernehmen |
 | [08-fehlersuche.md](docs/08-fehlersuche.md) | Wenn etwas nicht läuft |
 
 ---

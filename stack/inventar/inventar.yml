@@ -8,6 +8,12 @@
 # Windows-Server und -Clients muessen hier NICHT stehen – die melden sich
 # ueber das GPO-Skript von selbst an.
 #
+# Auch die Geraeteerkennung nimmt einem Arbeit ab: Was sie im Netz findet,
+# wird sofort mitueberwacht und landet in gefunden.yml. Diese Datei hier
+# ist trotzdem sinnvoll – nur was hier steht, hat einen sprechenden Namen,
+# einen Raum und die Kennzeichnung "kritisch". Vorgehen dazu steht in
+# docs/10-geraeteerkennung.md.
+#
 # Der Registrierungs-Dienst liest diese Datei alle 30 Sekunden neu ein.
 # Aenderungen sind also ohne Neustart sofort wirksam.
 # ===================================================================

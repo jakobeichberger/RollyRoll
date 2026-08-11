@@ -156,9 +156,21 @@ services:
       STANDORT: ${STANDORT:-Schule}
       AGENT_TIMEOUT_TAGE: ${AGENT_TIMEOUT_TAGE:-30}
       SNMP_MODUL_STANDARD: ${SNMP_MODUL_STANDARD:-if_mib}
+      # --- Geraeteerkennung: findet Switches, APs, Drucker und USV selbst ---
+      ERKENNUNG_NETZE: ${ERKENNUNG_NETZE:-}
+      ERKENNUNG_MODUS: ${ERKENNUNG_MODUS:-automatisch}
+      ERKENNUNG_INTERVALL_MINUTEN: ${ERKENNUNG_INTERVALL_MINUTEN:-60}
+      ERKENNUNG_HOECHSTZAHL: ${ERKENNUNG_HOECHSTZAHL:-4096}
+      SNMP_COMMUNITY: ${SNMP_COMMUNITY:-public}
+      UNIFI_URL: ${UNIFI_URL:-}
+      UNIFI_BENUTZER: ${UNIFI_BENUTZER:-}
+      UNIFI_PASSWORT: ${UNIFI_PASSWORT:-}
+      UNIFI_SITES: ${UNIFI_SITES:-all}
     volumes:
       - ./prometheus/targets:/targets
-      - ./inventar:/inventar:ro
+      # Schreibend, weil die Erkennung gefunden.yml ablegt. inventar.yml
+      # selbst wird ausschliesslich gelesen.
+      - ./inventar:/inventar
       - ./dist:/dist:ro
       - registrar-data:/state
 

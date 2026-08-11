@@ -124,6 +124,9 @@ param(
     [string]$FortiGateToken,
     [string]$SnmpCommunity = 'public',
 
+    [string[]]$ErkennungNetze,
+    [ValidateSet('automatisch', 'vorschlag', 'aus')][string]$ErkennungModus = 'automatisch',
+
     [int]$WartezeitMinuten = 45,
     [switch]$Ueberschreiben,
     [switch]$NurVorbereiten
@@ -614,6 +617,65 @@ local-hostname: $Hostname
     Write-Erfolg 'Konfiguration fuer das vorhandene Abbild erstellt'
 }
 
+function Get-ErkennungsNetze {
+    <#
+        Bestimmt, welche Netze der Suchlauf abklappern soll.
+
+        Ohne Angabe wird das eigene Netz der VM genommen – wer eine feste
+        IP vergibt, meint fast immer genau dieses Netz. Das erspart einen
+        weiteren Parameter und liefert vom ersten Start an Ergebnisse.
+        Weitere Netze (WLAN, Drucker, Klassenzimmer) traegt man spaeter in
+        der .env nach; die Geraete tauchen dann beim naechsten Lauf auf.
+    #>
+    # Nur einmal ermitteln – die Zusammenfassung am Ende fragt noch einmal
+    # nach und soll die Hinweise nicht ein zweites Mal ausgeben.
+    if ($null -ne $script:ErkennungsNetzeWert) { return $script:ErkennungsNetzeWert }
+
+    if ($ErkennungModus -eq 'aus') {
+        $script:ErkennungsNetzeWert = ''
+        return ''
+    }
+
+    if ($ErkennungNetze) {
+        $script:ErkennungsNetzeWert = ($ErkennungNetze -join ',')
+        return $script:ErkennungsNetzeWert
+    }
+
+    if (-not $IPAdresse) {
+        Write-Hinweis 'Ohne feste IP kann das eigene Netz nicht bestimmt werden – Suchlauf bleibt vorerst aus.'
+        Write-Hinweis 'Nachtragen in der .env:  ERKENNUNG_NETZE=10.0.0.0/24'
+        $script:ErkennungsNetzeWert = ''
+        return ''
+    }
+
+    $teile = $IPAdresse.Split('/')
+    $laenge = [int]$teile[1]
+
+    if ($laenge -lt 22) {
+        Write-Warnung "Das eigene Netz /$laenge ist fuer einen Suchlauf sehr gross."
+        Write-Hinweis 'Bitte in der .env engere Netze eintragen, z. B. ERKENNUNG_NETZE=10.0.0.0/24'
+        $script:ErkennungsNetzeWert = ''
+        return ''
+    }
+
+    # Netzadresse aus IP und Praefixlaenge errechnen
+    $adressBytes = ([System.Net.IPAddress]::Parse($teile[0])).GetAddressBytes()
+    [array]::Reverse($adressBytes)
+    $adressZahl = [BitConverter]::ToUInt32($adressBytes, 0)
+    # PowerShell rechnet -shl in Int64. Ohne das Abschneiden auf 32 Bit
+    # laeuft der Rueckcast nach uint32 ueber.
+    $maske = if ($laenge -eq 0) { [uint32]0 } else {
+        [uint32]((([uint32]::MaxValue -shl (32 - $laenge))) -band 0xFFFFFFFF)
+    }
+    $netzZahl = $adressZahl -band $maske
+    $netzBytes = [BitConverter]::GetBytes([uint32]$netzZahl)
+    [array]::Reverse($netzBytes)
+    $netz = "$([System.Net.IPAddress]::new($netzBytes))/$laenge"
+
+    Write-Hinweis "Geraeteerkennung durchsucht das eigene Netz: $netz"
+    return $netz
+}
+
 function New-EnvInhalt {
     <#
         Baut die .env fuer den Stack. Geheimnisse werden hier auf dem
@@ -657,6 +719,10 @@ function New-EnvInhalt {
     & $add "FORTIGATE_INSECURE=true"
     & $add "SNMP_COMMUNITY=$SnmpCommunity"
     & $add "SNMP_MODUL_STANDARD=if_mib"
+    & $add "ERKENNUNG_NETZE=$(Get-ErkennungsNetze)"
+    & $add "ERKENNUNG_MODUS=$(if ($ErkennungModus -eq 'aus') { 'vorschlag' } else { $ErkennungModus })"
+    & $add "ERKENNUNG_INTERVALL_MINUTEN=60"
+    & $add "ERKENNUNG_HOECHSTZAHL=4096"
     & $add "PROMETHEUS_IMAGE=prom/prometheus:v3.1.0"
     & $add "ALERTMANAGER_IMAGE=prom/alertmanager:v0.28.0"
     & $add "BLACKBOX_IMAGE=prom/blackbox-exporter:v0.25.0"
@@ -730,6 +796,16 @@ function New-AutomatischesIso {
     $nocloud = Join-Path $entpackt 'nocloud'
     New-CloudInitDaten -Zielverzeichnis $nocloud
     New-ProjektArchiv -Zieldatei (Join-Path $nocloud 'schulmonitoring.tar.gz')
+
+    # Zweiter, unabhaengiger Weg zur selben Konfiguration: Der Installer
+    # sucht auch nach /autoinstall.yaml im Wurzelverzeichnis des Mediums.
+    # Sollte cloud-init die Angabe "ds=nocloud;s=/cdrom/nocloud/" einmal
+    # anders auslegen – zwischen den Fassungen hat sich das schon geaendert –
+    # greift dieser Weg. Beide zeigen auf denselben Inhalt, es kann also
+    # nichts auseinanderlaufen.
+    Copy-Item -LiteralPath (Join-Path $nocloud 'user-data') `
+        -Destination (Join-Path $entpackt 'autoinstall.yaml') -Force
+    Write-Hinweis 'Installationsvorgaben zusaetzlich als /autoinstall.yaml hinterlegt'
 
     # --- Startparameter ergaenzen -------------------------------------
     # Ohne "autoinstall" auf der Kernel-Befehlszeile fragt der Installer
@@ -1043,10 +1119,14 @@ function Write-Zusammenfassung {
 
    Ausfuehrliche Anleitung: docs\03-gpo-rollout.md
 
- NETZWERKGERAETE EINTRAGEN
-   Switches, Access Points, Drucker und USV kommen in die Datei
-     /opt/schulmonitoring/stack/inventar/inventar.yml
-   Aenderungen werden binnen 30 Sekunden ohne Neustart uebernommen.
+ NETZWERKGERAETE
+   Switches, Access Points, Drucker und USV findet der Suchlauf selbst und
+   ueberwacht sie sofort. Fuer sprechende Namen und Raumangaben die Bloecke
+   aus  inventar/gefunden.yml  nach  inventar/inventar.yml  uebernehmen.
+   Beides liegt unter /opt/schulmonitoring/stack/
+   Durchsucht wird: $(Get-ErkennungsNetze)
+   Weitere Netze in der .env unter ERKENNUNG_NETZE nachtragen.
+   Ausfuehrlich: docs\10-geraeteerkennung.md
 
  SYSLOG VON FORTIGATE UND UNIFI
    Ziel: $adresse, Port 1514/UDP
@@ -1086,6 +1166,8 @@ try {
     $script:AgentToken      = New-Geheimnis -Laenge 48
     $script:GewaehlterSwitch = $null
     $script:VorhergesagteIp = $null
+    # Muss vorbelegt sein: Set-StrictMode bricht sonst beim ersten Lesen ab.
+    $script:ErkennungsNetzeWert = $null
 
     Test-Voraussetzungen
 
