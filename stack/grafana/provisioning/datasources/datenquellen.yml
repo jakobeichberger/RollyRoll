@@ -1,0 +1,43 @@
+---
+apiVersion: 1
+
+datasources:
+
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 30s
+      httpMethod: POST
+      manageAlerts: false
+      prometheusType: Prometheus
+      cacheLevel: Low
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 2000
+      timeout: 60
+      derivedFields:
+        - name: Geraet
+          matcherRegex: '"computer"\s*:\s*"([^"]+)"'
+          url: '/d/schule-windows/windows-detail?var-geraet=${__value.raw}'
+          datasourceUid: prometheus
+
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: false
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false

@@ -1,0 +1,236 @@
+---
+# Hardware-Fehler und Vorwarnungen.
+# "vorwarnung: ja" markiert Regeln, die anschlagen BEVOR etwas ausfaellt.
+groups:
+
+  - name: hardware-datentraeger
+    rules:
+
+      - alert: SmartAusfallVorhergesagt
+        expr: schule_datentraeger_ausfall_vorhersage > 0
+        for: 10m
+        labels: { severity: critical, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "S.M.A.R.T. meldet bevorstehenden Plattenausfall auf {{ $labels.geraet }}"
+          description: >-
+            Datentraeger {{ $labels.modell }} (Seriennummer {{ $labels.seriennummer }})
+            in {{ $labels.geraet }} meldet einen bevorstehenden Ausfall.
+            Platte zeitnah tauschen und Datensicherung pruefen.
+
+      - alert: DatentraegerZustandKritisch
+        expr: schule_datentraeger_zustand > 0
+        for: 15m
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Datentraeger in {{ $labels.geraet }} nicht mehr gesund"
+          description: >-
+            {{ $labels.modell }} meldet Zustand "{{ $labels.zustand }}".
+            0=Healthy, 1=Warning, 2=Unhealthy.
+
+      - alert: SsdVerschleissHoch
+        expr: schule_datentraeger_verschleiss_prozent >= 80
+        for: 1h
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja", paar: ssd-verschleiss }
+        annotations:
+          summary: "SSD-Verschleiss {{ $value | printf \"%.0f\" }} % in {{ $labels.geraet }}"
+          description: "Ersatzbeschaffung fuer {{ $labels.modell }} einplanen."
+
+      - alert: SsdVerschleissKritisch
+        expr: schule_datentraeger_verschleiss_prozent >= 90
+        for: 30m
+        labels: { severity: critical, kategorie: hardware, vorwarnung: "ja", paar: ssd-verschleiss }
+        annotations:
+          summary: "SSD am Lebensende in {{ $labels.geraet }} ({{ $value | printf \"%.0f\" }} %)"
+          description: "Datentraeger {{ $labels.modell }} sofort tauschen."
+
+      - alert: DatentraegerZuWarm
+        expr: schule_datentraeger_temperatur_celsius > 55
+        for: 20m
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "Datentraeger in {{ $labels.geraet }} bei {{ $value | printf \"%.0f\" }} °C"
+          description: "Belueftung und Luefter im Geraet pruefen."
+
+      - alert: RaidVerbundDegradiert
+        expr: schule_raid_zustand > 0
+        for: 5m
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "RAID-Verbund in {{ $labels.geraet }} nicht optimal"
+          description: >-
+            Controller {{ $labels.controller }}, Verbund {{ $labels.verbund }}:
+            Zustand "{{ $labels.zustand }}". Ersatzplatte einsetzen.
+
+      - alert: RaidBatterieDefekt
+        expr: schule_raid_bbu_zustand > 0
+        for: 30m
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "RAID-Cache-Batterie in {{ $labels.geraet }} meldet Fehler"
+          description: "Ohne funktionierende BBU faellt der Schreibcache weg – Leistungseinbruch und Datenrisiko."
+
+      - alert: SpeicherplatzKnapp
+        expr: |
+          100 * windows_logical_disk_free_bytes / windows_logical_disk_size_bytes < 10
+          and windows_logical_disk_size_bytes > 0
+        for: 30m
+        labels: { severity: warning, kategorie: kapazitaet, paar: speicherplatz }
+        annotations:
+          summary: "Laufwerk {{ $labels.volume }} auf {{ $labels.geraet }} zu {{ $value | printf \"%.0f\" }} % frei"
+          description: "Weniger als 10 % freier Speicher."
+
+      - alert: SpeicherplatzKritisch
+        expr: |
+          100 * windows_logical_disk_free_bytes / windows_logical_disk_size_bytes < 4
+          and windows_logical_disk_size_bytes > 0
+        for: 10m
+        labels: { severity: critical, kategorie: kapazitaet, paar: speicherplatz }
+        annotations:
+          summary: "Laufwerk {{ $labels.volume }} auf {{ $labels.geraet }} laeuft voll"
+          description: "Nur noch {{ $value | printf \"%.1f\" }} % frei."
+
+      # Echte Vorwarnung: Trend-Hochrechnung statt Schwellwert
+      - alert: SpeicherplatzLaeuftInVierTagenVoll
+        expr: |
+          predict_linear(windows_logical_disk_free_bytes{volume!~"HarddiskVolume.*"}[12h], 4 * 24 * 3600) < 0
+          and windows_logical_disk_free_bytes / windows_logical_disk_size_bytes < 0.30
+          and windows_logical_disk_size_bytes > 0
+        for: 2h
+        labels: { severity: warning, kategorie: kapazitaet, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $labels.volume }} auf {{ $labels.geraet }} ist in ca. 4 Tagen voll"
+          description: "Hochrechnung aus dem Verlauf der letzten 12 Stunden. Jetzt aufraeumen oder erweitern."
+
+      - alert: LinuxSpeicherplatzLaeuftVoll
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"}[12h], 4 * 24 * 3600) < 0
+          and node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.30
+        for: 2h
+        labels: { severity: warning, kategorie: kapazitaet, vorwarnung: "ja" }
+        annotations:
+          summary: "{{ $labels.mountpoint }} auf {{ $labels.geraet }} ist in ca. 4 Tagen voll"
+          description: "Hochrechnung aus dem Verlauf der letzten 12 Stunden."
+
+  - name: hardware-system
+    rules:
+
+      - alert: WheaHardwarefehler
+        expr: schule_whea_fehler_24h > 0
+        labels: { severity: critical, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "WHEA-Hardwarefehler auf {{ $labels.geraet }}"
+          description: >-
+            Windows meldet korrigierte oder unkorrigierbare Hardwarefehler
+            (Quelle {{ $labels.quelle }}). Typisch fuer defekten RAM, CPU oder PCIe-Karte.
+            Diagnose sofort starten – das ist die klassische Vorstufe eines Totalausfalls.
+
+      - alert: SpeicherTemperaturHoch
+        expr: schule_temperatur_celsius > 75
+        for: 15m
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja", paar: speichertemperatur }
+        annotations:
+          summary: "{{ $labels.sensor }} auf {{ $labels.geraet }} bei {{ $value | printf \"%.0f\" }} °C"
+          description: "Kuehlung, Luefter und Raumtemperatur pruefen."
+
+      - alert: SpeicherTemperaturKritisch
+        expr: schule_temperatur_celsius > 88
+        for: 5m
+        labels: { severity: critical, kategorie: hardware, paar: speichertemperatur }
+        annotations:
+          summary: "Ueberhitzung auf {{ $labels.geraet }}: {{ $value | printf \"%.0f\" }} °C"
+          description: "Das System drosselt oder schaltet sich gleich ab."
+
+      - alert: LuefterDefekt
+        expr: schule_luefter_zustand > 0
+        for: 10m
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Luefter {{ $labels.sensor }} in {{ $labels.geraet }} meldet Stoerung"
+          description: "Zustand \"{{ $labels.zustand }}\". Ein Luefterausfall fuehrt kurzfristig zu Ueberhitzung."
+
+      - alert: NetzteilFehler
+        expr: schule_netzteil_zustand > 0
+        for: 5m
+        labels: { severity: critical, kategorie: hardware }
+        annotations:
+          summary: "Netzteil {{ $labels.sensor }} in {{ $labels.geraet }} meldet Fehler"
+          description: "Redundanz pruefen – bei Ausfall des zweiten Netzteils steht der Server."
+
+      - alert: AkkuVerschleiss
+        expr: schule_akku_verschleiss_prozent > 40
+        for: 6h
+        labels: { severity: warning, kategorie: hardware, vorwarnung: "ja" }
+        annotations:
+          summary: "Akku in {{ $labels.geraet }} nur noch {{ $value | printf \"%.0f\" }} % Restkapazitaet verloren"
+          description: "Notebook-Akku sollte getauscht werden."
+
+      - alert: ArbeitsspeicherKnapp
+        expr: |
+          100 * windows_memory_available_bytes
+          / (windows_cs_physical_memory_bytes > 0) < 8
+        for: 20m
+        labels: { severity: warning, kategorie: kapazitaet }
+        annotations:
+          summary: "Nur noch {{ $value | printf \"%.0f\" }} % freier RAM auf {{ $labels.geraet }}"
+          description: "Auslagerung bremst das System stark aus."
+
+      - alert: DauerhafteHoheCpuLast
+        expr: |
+          100 - (avg by (geraet, job) (rate(windows_cpu_time_total{mode="idle"}[10m])) * 100) > 92
+        for: 45m
+        labels: { severity: warning, kategorie: leistung }
+        annotations:
+          summary: "CPU auf {{ $labels.geraet }} seit 45 Minuten bei {{ $value | printf \"%.0f\" }} %"
+          description: "Dauerlast – Ursache pruefen (Prozess, Virenscan, Fehlfunktion)."
+
+      - alert: UnerwarteterNeustart
+        expr: |
+          windows_system_system_up_time
+          and (time() - windows_system_system_up_time) < 900
+          and schule_letzter_neustart_geplant == 0
+        for: 0m
+        labels: { severity: warning, kategorie: hardware }
+        annotations:
+          summary: "{{ $labels.geraet }} wurde unerwartet neu gestartet"
+          description: "Kein geplantes Herunterfahren protokolliert – auf Bluescreen/Stromausfall pruefen."
+
+  - name: hardware-usv
+    rules:
+
+      # Die USV-Werte kommen ueber SNMP (Modul apc_usv in inventar.yml).
+      - alert: UsvAufBatterie
+        expr: upsBasicOutputStatus == 3
+        for: 1m
+        labels: { severity: critical, kategorie: strom }
+        annotations:
+          summary: "USV {{ $labels.geraet }} laeuft auf Batterie"
+          description: >-
+            Stromausfall im Serverraum. Restlaufzeit beobachten und
+            gegebenenfalls Server geordnet herunterfahren.
+
+      - alert: UsvBatterieSchwach
+        expr: upsAdvBatteryCapacity < 40
+        for: 5m
+        labels: { severity: warning, kategorie: strom, vorwarnung: "ja" }
+        annotations:
+          summary: "USV-Batterie {{ $labels.geraet }} bei {{ $value | printf \"%.0f\" }} %"
+          description: "Batterie laedt nicht mehr voll oder ist alt – Tausch einplanen."
+
+      - alert: UsvBatterieTauschen
+        expr: upsAdvBatteryReplaceIndicator == 2
+        for: 1h
+        labels: { severity: warning, kategorie: strom, vorwarnung: "ja" }
+        annotations:
+          summary: "USV {{ $labels.geraet }} fordert einen Batteriewechsel an"
+          description: >-
+            Die USV meldet selbst, dass die Batterie das Ende ihrer
+            Lebensdauer erreicht hat. Bei einem Stromausfall haelt sie dann
+            nicht mehr durch.
+
+      - alert: UsvUeberlastet
+        expr: upsAdvOutputLoad > 80
+        for: 15m
+        labels: { severity: warning, kategorie: strom, vorwarnung: "ja" }
+        annotations:
+          summary: "USV {{ $labels.geraet }} zu {{ $value | printf \"%.0f\" }} % ausgelastet"
+          description: "Bei hoher Last sinkt die Ueberbrueckungszeit deutlich."

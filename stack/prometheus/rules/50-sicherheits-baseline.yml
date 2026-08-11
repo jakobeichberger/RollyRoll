@@ -1,0 +1,222 @@
+---
+# Abweichungen von der Sicherheits-Grundhaertung.
+#
+# Bewusst AGGREGIERT je Pruefung statt je Geraet: Wenn in der ganzen Schule
+# die PowerShell-Protokollierung fehlt, ist das EINE Meldung mit der Anzahl
+# betroffener Geraete – nicht dreihundert Mails. Welche Geraete genau
+# betroffen sind, steht im Dashboard "Sicherheits-Baseline".
+#
+# Grundlage: schule_sicherheit_pruefung
+#   1 = wie empfohlen eingestellt
+#   0 = Abweichung
+#   2 = auf diesem Geraet nicht pruefbar oder nicht zutreffend
+groups:
+
+  - name: baseline-abweichungen
+    rules:
+
+      - alert: HaertungAbweichungHoch
+        expr: |
+          count by (pruefung, kategorie, massnahme) (
+            schule_sicherheit_pruefung{schwere="hoch"} == 0
+          ) > 0
+        for: 6h
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "{{ $value }} Geraete: {{ $labels.pruefung }} nicht wie empfohlen eingestellt"
+          description: >-
+            Kategorie {{ $labels.kategorie }}. Empfehlung: {{ $labels.massnahme }}.
+            Betroffene Geraete stehen im Dashboard "Sicherheits-Baseline".
+
+      - alert: HaertungAbweichungMittel
+        expr: |
+          count by (pruefung, kategorie, massnahme) (
+            schule_sicherheit_pruefung{schwere="mittel"} == 0
+          ) > 0
+        for: 24h
+        labels: { severity: info, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "{{ $value }} Geraete: {{ $labels.pruefung }} weicht ab"
+          description: "Empfehlung: {{ $labels.massnahme }}"
+
+      # Eine Abweichung, die neu auftaucht, ist interessanter als eine, die
+      # seit Monaten besteht: Da hat jemand etwas umgestellt.
+      - alert: HaertungNeueAbweichung
+        expr: |
+          (schule_sicherheit_pruefung{schwere="hoch"} == 0)
+          and
+          (schule_sicherheit_pruefung{schwere="hoch"} offset 1d == 1)
+        for: 30m
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "Haertung auf {{ $labels.geraet }} wurde zurueckgenommen: {{ $labels.pruefung }}"
+          description: >-
+            Diese Einstellung war gestern noch in Ordnung und ist es heute
+            nicht mehr. Entweder eine geplante Aenderung – oder jemand hat
+            gezielt eine Schutzfunktion abgeschaltet. Empfehlung:
+            {{ $labels.massnahme }}
+
+  - name: baseline-bewertung
+    rules:
+
+      - alert: HaertungBewertungNiedrig
+        expr: |
+          count(schule_sicherheit_score_prozent < 60) > 0
+        for: 12h
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "{{ $value }} Geraete erreichen weniger als 60 % der Grundhaertung"
+          description: >-
+            Im Dashboard "Sicherheits-Baseline" stehen diese Geraete ganz oben.
+            Meist fehlt bei allen dieselbe Gruppenrichtlinie – ein Handgriff
+            hebt dann den Wert der ganzen Schule.
+
+      - alert: BaselinePruefungLaeuftNicht
+        expr: |
+          time() - schule_sicherheit_pruefung_zeitstempel > 86400
+        for: 2h
+        labels: { severity: warning, kategorie: monitoring }
+        annotations:
+          summary: "Baseline-Pruefung auf {{ $labels.geraet }} laeuft seit ueber einem Tag nicht mehr"
+          description: >-
+            Die geplante Aufgabe "SchulMonitoring-Sicherheitspruefung" auf dem
+            Geraet pruefen.
+
+  - name: baseline-einzelbefunde
+    rules:
+
+      # Der Manipulationsschutz schaltet sich nicht von selbst ab. Ist er
+      # aus, hat das jemand getan – oder etwas.
+      - alert: DefenderManipulationsschutzAus
+        expr: schule_sicherheit_pruefung{pruefung="defender_manipulationsschutz"} == 0
+        for: 1h
+        labels: { severity: critical, kategorie: security }
+        annotations:
+          summary: "Manipulationsschutz des Virenschutzes auf {{ $labels.geraet }} ist aus"
+          description: >-
+            Ohne Manipulationsschutz kann Schadsoftware den Virenschutz selbst
+            abschalten. Das ist einer der ersten Schritte vieler Angriffe.
+
+      - alert: LsaSchutzAus
+        expr: schule_sicherheit_pruefung{pruefung="lsa_schutz_aktiv"} == 0
+        for: 24h
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "LSA-Schutz auf {{ $labels.geraet }} nicht aktiv"
+          description: >-
+            Ohne LSA-Schutz lassen sich Anmeldedaten direkt aus dem
+            Arbeitsspeicher auslesen. Genau daraus entsteht die Ausbreitung
+            im Netz nach einem einzelnen infizierten Rechner.
+
+      - alert: WdigestKlartextAktiv
+        expr: schule_sicherheit_pruefung{pruefung="wdigest_klartext_aus"} == 0
+        for: 30m
+        labels: { severity: critical, kategorie: security }
+        annotations:
+          summary: "WDigest legt auf {{ $labels.geraet }} Kennwoerter im Klartext ab"
+          description: >-
+            Diese Einstellung ist seit Jahren nicht mehr Standard. Wird sie
+            gesetzt, ist das fast immer die Vorbereitung eines Angriffs auf
+            Zugangsdaten. Sofort pruefen, wer sie gesetzt hat.
+
+      - alert: LapsFehlt
+        expr: |
+          count(schule_sicherheit_pruefung{pruefung="laps_im_einsatz"} == 0) > 0
+        for: 24h
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "{{ $value }} Geraete ohne LAPS"
+          description: >-
+            Ohne eindeutige lokale Administratorkennwoerter oeffnet ein
+            einziges erbeutetes Kennwort saemtliche Rechner der Schule.
+            Windows LAPS ist in aktuellen Windows-Versionen bereits enthalten.
+
+      - alert: ProtokollierungUnvollstaendig
+        expr: |
+          count(schule_sicherheit_pruefung{pruefung=~"befehlszeile_protokolliert|ps_skriptblock_protokollierung|audit_prozesserstellung|audit_anmeldung"} == 0) > 0
+        for: 12h
+        labels: { severity: warning, kategorie: monitoring, baseline: "ja" }
+        annotations:
+          summary: "Auf {{ $value }} Geraeten fehlen Voraussetzungen der Angriffserkennung"
+          description: >-
+            Ohne diese Einstellungen protokolliert Windows die gesuchten
+            Ereignisse gar nicht erst – die Regeln im Security-Dashboard
+            koennen dort also nichts finden. Siehe docs/06-security-monitoring.md.
+
+  - name: baseline-active-directory
+    rules:
+
+      - alert: KrbtgtKennwortZuAlt
+        expr: schule_ad_krbtgt_kennwort_alter_tage > 180
+        for: 1h
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "krbtgt-Kennwort ist {{ $value | printf \"%.0f\" }} Tage alt"
+          description: >-
+            Wer diesen Schluessel einmal erbeutet, kann sich beliebige
+            Kerberos-Tickets ausstellen – und zwar so lange, bis das Kennwort
+            zweimal gewechselt wurde. Turnusmaessig zuruecksetzen.
+
+      - alert: KontenOhneVorauthentifizierung
+        expr: schule_ad_konten_ohne_vorauthentifizierung > 0
+        for: 1h
+        labels: { severity: critical, kategorie: security }
+        annotations:
+          summary: "{{ $value }} AD-Konten ohne Kerberos-Vorauthentifizierung"
+          description: >-
+            Bei diesen Konten laesst sich das Kennwort ohne jede Anmeldung
+            offline knacken (AS-REP Roasting). Ein Angreifer im Schulnetz
+            braucht dafuer nur einen Netzwerkzugang.
+
+      - alert: DienstkontenMitAltemKennwort
+        expr: schule_ad_dienstkonten_altes_kennwort > 0
+        for: 24h
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "{{ $value }} Dienstkonten mit ueber ein Jahr altem Kennwort"
+          description: >-
+            Dienstkonten mit SPN lassen sich gezielt angreifen (Kerberoasting).
+            Je aelter und kuerzer das Kennwort, desto schneller faellt es.
+
+      - alert: ZuVieleDomaenenadministratoren
+        expr: schule_ad_domaenen_administratoren > 5
+        for: 24h
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "{{ $value }} Domaenen-Administratoren"
+          description: >-
+            Jedes zusaetzliche Konto in dieser Gruppe ist ein weiterer Weg,
+            die gesamte Domaene zu uebernehmen.
+
+      - alert: KontosperrungNichtEingerichtet
+        expr: schule_sicherheit_pruefung{pruefung="ad_kontosperrung_aktiv"} == 0
+        for: 6h
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "Keine Kontosperrschwelle in der Domaene gesetzt"
+          description: >-
+            Ohne Sperrschwelle laufen Kennwortangriffe unbegrenzt weiter.
+            Die Erkennung im Monitoring sieht sie zwar, aufhalten tut sie
+            aber niemand.
+
+  - name: baseline-rechteausweitung
+    rules:
+
+      - alert: DiensteMitUngeschuetztemPfad
+        expr: schule_dienste_ungeschuetzter_pfad > 0
+        for: 24h
+        labels: { severity: warning, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "{{ $value }} Dienste auf {{ $labels.geraet }} mit ungeschuetztem Pfad"
+          description: >-
+            Bei Dienstpfaden mit Leerzeichen ohne Anfuehrungszeichen startet
+            Windows unter Umstaenden ein untergeschobenes Programm mit
+            Systemrechten. Klassischer Weg zur Rechteausweitung.
+
+      - alert: ZuVieleLokaleAdministratoren
+        expr: schule_lokale_administratoren > 8
+        for: 24h
+        labels: { severity: info, kategorie: security, baseline: "ja" }
+        annotations:
+          summary: "{{ $value }} lokale Administratoren auf {{ $labels.geraet }}"
+          description: "Lokale Administratorengruppe aufraeumen."

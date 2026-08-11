@@ -1,0 +1,103 @@
+---
+# Konfigurationssicherung der Netzgeraete und Netzplan aus LLDP.
+groups:
+
+  - name: konfigurationssicherung
+    rules:
+
+      - alert: KonfigurationssicherungFehlgeschlagen
+        expr: schule_konfig_sicherung_erfolgreich == 0
+        for: 30m
+        labels: { severity: warning, kategorie: sicherung }
+        annotations:
+          summary: "Konfiguration von {{ $labels.geraet }} konnte nicht gesichert werden"
+          description: >-
+            Meist ein abgelaufenes API-Token oder ein geaendertes Kennwort.
+            Auf der VM nachsehen mit:
+            journalctl -u schulmonitoring-konfig --since today
+
+      # Der Zeitgeber laeuft stuendlich. Sechs Stunden Stille lassen ein
+      # paar verpasste Laeufe zu, ohne dass ein echter Ausfall tagelang
+      # unbemerkt bleibt.
+      - alert: KeineKonfigurationssicherungMehr
+        expr: (time() - schule_konfig_sicherung_zeitstempel) > 21600
+        for: 30m
+        labels: { severity: warning, kategorie: sicherung }
+        annotations:
+          summary: "Seit ueber sechs Stunden keine Konfigurationssicherung"
+          description: >-
+            Der Zeitgeber laeuft stuendlich, hier stockt also etwas.
+            Pruefen mit: systemctl status schulmonitoring-konfig.timer
+
+      # Der eigentliche Sicherheitsnutzen. Absichtlich nur "info": Wer
+      # tagsueber an der Firewall arbeitet, soll keine Warnung bekommen.
+      # Nachts ist dieselbe Aenderung eine andere Geschichte – siehe unten.
+      - alert: NetzkonfigurationGeaendert
+        expr: schule_konfig_geaendert == 1
+        for: 5m
+        labels: { severity: info, kategorie: sicherung }
+        annotations:
+          summary: "Die Konfiguration eines Netzgeraets hat sich geaendert"
+          description: >-
+            Was genau, zeigt auf der VM:
+            git -C /opt/schulmonitoring/konfig show HEAD
+
+      # Eine Aenderung ausserhalb der Schulzeit hat niemand aus dem Team
+      # gemacht.
+      #
+      # Der Zusatz mit dem Zeitstempel ist wesentlich: schule_konfig_geaendert
+      # bleibt bis zum naechsten Lauf auf 1. Ohne die Frischepruefung wuerde
+      # eine morgens erkannte Aenderung am selben Abend um 21 Uhr ein
+      # zweites Mal melden – und dann sogar mit der falschen Aussage, es
+      # sei gerade eben etwas geaendert worden.
+      #
+      # Dass der Erkennungszeitpunkt ueberhaupt etwas ueber den
+      # Aenderungszeitpunkt aussagt, liegt am stuendlichen Zeitgeber.
+      # Bei einem naechtlichen Lauf waere jede Aenderung eine "Nachtaenderung".
+      - alert: NetzkonfigurationNachtsGeaendert
+        expr: |
+          schule_konfig_geaendert == 1
+          and (time() - schule_konfig_sicherung_zeitstempel) < 5400
+          and on() (hour() < 5 or hour() > 20)
+        for: 5m
+        labels: { severity: warning, kategorie: security }
+        annotations:
+          summary: "Netzkonfiguration wurde ausserhalb der Schulzeit geaendert"
+          description: >-
+            Zwischen 21 und 5 Uhr arbeitet normalerweise niemand an
+            Firewall oder Controller. Nachsehen, was sich geaendert hat:
+            git -C /opt/schulmonitoring/konfig show HEAD
+            Achtung: Die Uhrzeit wird in UTC ausgewertet.
+
+  - name: netzplan
+    rules:
+
+      # Faellt die Nachbarzahl eines Switches, ist eine Strecke weg –
+      # oft bevor ein Ping ausbleibt, weil das Geraet dahinter noch ueber
+      # einen anderen Weg erreichbar ist.
+      - alert: NetzplanVerbindungVerschwunden
+        expr: |
+          schule_lldp_nachbarn
+            < (max_over_time(schule_lldp_nachbarn[7d]) > 1)
+        for: 30m
+        labels: { severity: warning, kategorie: netzwerk }
+        annotations:
+          summary: "{{ $labels.geraet }} meldet weniger Nachbarn als sonst"
+          description: >-
+            Aktuell {{ $value }}. Ein Geraet ist von diesem Switch
+            verschwunden – abgesteckt, ausgefallen oder Kabelproblem.
+            Im Dashboard "Geraeteerkennung" zeigt die Tabelle "Netzplan",
+            was zuletzt an welchem Port hing.
+
+      - alert: KeinNetzplanMehr
+        expr: |
+          schule_erkennung_aktiv == 1
+          and schule_lldp_verbindungen_gesamt == 0
+          and max_over_time(schule_lldp_verbindungen_gesamt[7d]) > 0
+        for: 2h
+        labels: { severity: info, kategorie: netzwerk }
+        annotations:
+          summary: "Es werden keine LLDP-Verbindungen mehr gefunden"
+          description: >-
+            Vorher gab es welche. Entweder wurde LLDP zentral abgeschaltet
+            oder der SNMP-Zugang stimmt nicht mehr.

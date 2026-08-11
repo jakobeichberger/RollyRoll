@@ -1,0 +1,147 @@
+---
+# ===================================================================
+# Geraeteliste der Schule
+# ===================================================================
+# Alles, was KEINEN Windows-Agenten bekommen kann, wird hier eingetragen:
+# Switches, Access Points, Firewall, Drucker, USV, Kameras, NAS ...
+#
+# Windows-Server und -Clients muessen hier NICHT stehen – die melden sich
+# ueber das GPO-Skript von selbst an.
+#
+# Auch die Geraeteerkennung nimmt einem Arbeit ab: Was sie im Netz findet,
+# wird sofort mitueberwacht und landet in gefunden.yml. Diese Datei hier
+# ist trotzdem sinnvoll – nur was hier steht, hat einen sprechenden Namen,
+# einen Raum und die Kennzeichnung "kritisch". Vorgehen dazu steht in
+# docs/10-geraeteerkennung.md.
+#
+# Der Registrierungs-Dienst liest diese Datei alle 30 Sekunden neu ein.
+# Aenderungen sind also ohne Neustart sofort wirksam.
+# ===================================================================
+
+standort: Schule
+
+# --- Vorgaben, die fuer alle Geraete gelten, wenn nichts anderes dasteht ---
+vorgaben:
+  ping: true
+  snmp_auth: schule_v2
+
+geraete:
+
+  # ---------------------------------------------------------------- #
+  # Firewall
+  # ---------------------------------------------------------------- #
+  - name: fw-fortigate-01
+    ip: 10.0.0.1
+    typ: firewall
+    hersteller: fortinet
+    raum: Serverraum
+    kritisch: true
+    snmp_modul: fortigate_schule
+    # Zusaetzlich ueber die REST-API abfragen (Token in .env hinterlegen)
+    fortigate_api: true
+    dienste:
+      - { modul: https, port: 443, name: Verwaltungsoberflaeche }
+
+  # ---------------------------------------------------------------- #
+  # UniFi Switches
+  # ---------------------------------------------------------------- #
+  - name: sw-core-01
+    ip: 10.0.0.2
+    typ: switch
+    hersteller: unifi
+    raum: Serverraum
+    kritisch: true
+    snmp_modul: if_mib
+
+  - name: sw-edv-saal-1
+    ip: 10.0.0.3
+    typ: switch
+    hersteller: unifi
+    raum: EDV-Saal 1
+    snmp_modul: if_mib
+
+  - name: sw-verwaltung
+    ip: 10.0.0.4
+    typ: switch
+    hersteller: unifi
+    raum: Verwaltung
+    snmp_modul: if_mib
+
+  # ---------------------------------------------------------------- #
+  # UniFi Access Points
+  # Die Detailwerte (Clients, Kanalauslastung, Funkqualitaet) kommen ueber
+  # den Controller. Hier steht der Ping – der erkennt einen Ausfall sofort,
+  # auch wenn der Controller gerade selbst Probleme hat.
+  # ---------------------------------------------------------------- #
+  - name: ap-erdgeschoss-gang
+    ip: 10.0.1.11
+    typ: accesspoint
+    hersteller: unifi
+    raum: Erdgeschoss Gang
+    snmp_modul: ubiquiti_unifi
+
+  - name: ap-1og-gang
+    ip: 10.0.1.12
+    typ: accesspoint
+    hersteller: unifi
+    raum: 1. Stock Gang
+    snmp_modul: ubiquiti_unifi
+
+  - name: ap-turnsaal
+    ip: 10.0.1.13
+    typ: accesspoint
+    hersteller: unifi
+    raum: Turnsaal
+    snmp_modul: ubiquiti_unifi
+
+  # ---------------------------------------------------------------- #
+  # UniFi Controller
+  # ---------------------------------------------------------------- #
+  - name: unifi-controller
+    ip: 10.0.0.10
+    typ: server
+    hersteller: unifi
+    raum: Serverraum
+    kritisch: true
+    dienste:
+      - { modul: https, port: 8443, name: UniFi Weboberflaeche }
+
+  # ---------------------------------------------------------------- #
+  # Wichtige Dienste zusaetzlich von aussen pruefen
+  # (auch wenn auf dem Server ein Agent laeuft – so sieht man, ob der
+  #  Dienst wirklich antwortet und nicht nur der Rechner laeuft)
+  # ---------------------------------------------------------------- #
+  - name: dc01
+    ip: 10.0.0.20
+    typ: server
+    raum: Serverraum
+    kritisch: true
+    dienste:
+      - { modul: ldap, port: 389, name: Active Directory }
+      - { modul: tcp,  port: 445, name: Dateifreigaben }
+
+  # ---------------------------------------------------------------- #
+  # USV
+  # ---------------------------------------------------------------- #
+  - name: usv-serverraum
+    ip: 10.0.0.5
+    typ: usv
+    hersteller: apc
+    raum: Serverraum
+    kritisch: true
+    snmp_modul: apc_usv
+
+  # ---------------------------------------------------------------- #
+  # Drucker
+  # ---------------------------------------------------------------- #
+  - name: drucker-sekretariat
+    ip: 10.0.2.30
+    typ: drucker
+    raum: Sekretariat
+    snmp_modul: printer_mib
+
+  - name: drucker-lehrerzimmer
+    ip: 10.0.2.31
+    typ: drucker
+    raum: Lehrerzimmer
+    snmp_modul: printer_mib

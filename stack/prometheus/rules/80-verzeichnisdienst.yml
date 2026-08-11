@@ -1,0 +1,206 @@
+---
+# Active Directory im Betrieb.
+#
+# Die Sicherheits-Baseline sieht sich das Verzeichnis inhaltlich an. Hier
+# geht es um etwas anderes: ob der Laden ueberhaupt laeuft. Der Dienst
+# NTDS laeuft naemlich auch dann noch froehlich weiter, wenn sich in der
+# Schule niemand mehr anmelden kann – "Dienst laeuft" ist keine Aussage
+# ueber die Funktion.
+groups:
+
+  - name: ad-replikation
+    rules:
+
+      # Der wichtigste Alarm dieser Datei. Bricht die Replikation, merkt
+      # man es sonst tagelang nicht – bis Gruppenrichtlinien auf der
+      # Haelfte der Rechner veraltet sind und Kennwortaenderungen nicht
+      # mehr ankommen.
+      - alert: AdReplikationFehlgeschlagen
+        expr: schule_ad_replikation_fehlercode != 0
+        for: 30m
+        labels: { severity: critical, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "AD-Replikation mit {{ $labels.partner }} schlaegt fehl"
+          description: >-
+            Partition {{ $labels.partition }}, Fehlercode {{ $value }}.
+            Auf dem Domaenencontroller nachsehen mit:
+            repadmin /showrepl  –  haeufigste Ursachen sind DNS,
+            eine blockierende Firewall oder ein zu weit abgewichener DC.
+
+      - alert: AdReplikationHaengtSeitLangem
+        expr: schule_ad_replikation_letzter_erfolg_sekunden > 3600
+        for: 30m
+        labels: { severity: critical, kategorie: verzeichnisdienst, vorwarnung: "ja" }
+        annotations:
+          summary: "Seit {{ $value | humanizeDuration }} keine Replikation mit {{ $labels.partner }}"
+          description: >-
+            Aussagekraeftiger als der Fehlercode: Ein Partner kann seit
+            Tagen still sein, ohne je einen Fehler gemeldet zu haben.
+            Ab 60 Tagen Stille wird der DC endgueltig ausgeschlossen
+            (Tombstone) und muss neu aufgesetzt werden.
+
+      - alert: AdReplikationWiederholtFehlgeschlagen
+        expr: schule_ad_replikation_fehlversuche_hintereinander > 5
+        for: 15m
+        labels: { severity: warning, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "{{ $value }} Replikationsversuche mit {{ $labels.partner }} hintereinander gescheitert"
+          description: "Es bessert sich nicht von selbst – bitte nachsehen."
+
+  - name: ad-sysvol
+    rules:
+
+      # In dieser Umgebung besonders heikel: Das Agent-Skript liegt in
+      # SYSVOL und kaeme auf neuen Rechnern nicht mehr an.
+      - alert: SysvolFreigabeFehlt
+        expr: schule_ad_freigabe_vorhanden == 0
+        for: 10m
+        labels: { severity: critical, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "Freigabe {{ $labels.freigabe }} fehlt auf {{ $labels.geraet }}"
+          description: >-
+            Ohne SYSVOL und NETLOGON verteilt dieser Domaenencontroller
+            keine Gruppenrichtlinien mehr – und damit auch nicht das
+            Agent-Skript. Der DC hat sich vermutlich nicht sauber
+            hochgefahren (Journal-Wrap oder haengende Erstsynchronisierung).
+
+      - alert: DfsrOrdnerImFehler
+        expr: schule_ad_dfsr_zustand == 5
+        for: 20m
+        labels: { severity: critical, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "DFSR-Ordner {{ $labels.ordner }} auf {{ $labels.geraet }} meldet Fehler"
+          description: >-
+            Replikationsgruppe {{ $labels.gruppe }}. Klemmt hier SYSVOL,
+            werden Richtlinien nicht mehr verteilt.
+            Ereignisprotokoll "DFS Replication" ansehen.
+
+      - alert: DfsrErstsynchronisierungHaengt
+        expr: schule_ad_dfsr_zustand == 2
+        for: 6h
+        labels: { severity: warning, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "DFSR-Ordner {{ $labels.ordner }} seit Stunden in der Erstsynchronisierung"
+          description: >-
+            Kurz nach dem Hinzufuegen eines DC ist das normal. Ueber
+            mehrere Stunden hinweg nicht mehr.
+
+      # FRS gibt es ab Windows Server 2016 nicht mehr. Wer noch darauf
+      # repliziert, kann keinen neuen DC mehr aufnehmen - und merkt das
+      # erst im ungeeignetsten Moment.
+      - alert: SysvolNochAufFrs
+        expr: schule_ad_sysvol_migrationszustand >= 0 and schule_ad_sysvol_migrationszustand < 3
+        for: 1h
+        labels: { severity: warning, kategorie: verzeichnisdienst, vorwarnung: "ja" }
+        annotations:
+          summary: "SYSVOL repliziert noch ganz oder teilweise ueber FRS"
+          description: >-
+            Zustand {{ $value }} statt 3. FRS wird von Windows Server 2016
+            und neuer nicht mehr unterstuetzt: Ein neuer Domaenencontroller
+            laesst sich so nicht aufnehmen. Migration auf DFSR einplanen
+            (dfsrmig /getglobalstate).
+
+  - name: ad-erreichbarkeit
+    rules:
+
+      - alert: FsmoRolleNichtErreichbar
+        expr: schule_ad_fsmo_erreichbar == 0
+        for: 15m
+        labels: { severity: critical, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "Halter der Rolle {{ $labels.rolle }} antwortet nicht"
+          description: >-
+            {{ $labels.inhaber }} nimmt keine LDAP-Verbindungen an.
+            Je nach Rolle faellt damit Unterschiedliches aus: ohne
+            PDC-Emulator brechen Kennwortaenderungen und Zeitsynchronisierung,
+            ohne RID-Master lassen sich keine neuen Konten mehr anlegen.
+
+      - alert: LdapAntwortzeitHoch
+        expr: schule_ad_ldap_antwortzeit_sekunden > 1
+        for: 15m
+        labels: { severity: warning, kategorie: verzeichnisdienst, vorwarnung: "ja" }
+        annotations:
+          summary: "LDAP auf {{ $labels.geraet }} antwortet nach {{ $value | printf \"%.2f\" }} s"
+          description: >-
+            Der beste Fruehindikator fuer "die Anmeldung dauert heute so
+            lang". Meist Arbeitsspeicher, Plattenlatenz auf der
+            NTDS-Datenbank oder ein ueberlasteter DC.
+
+      - alert: LdapNichtErreichbar
+        expr: schule_ad_ldap_erreichbar == 0
+        for: 5m
+        labels: { severity: critical, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "LDAP auf {{ $labels.geraet }} antwortet nicht"
+          description: "Anmeldungen gegen diesen Domaenencontroller schlagen fehl."
+
+      - alert: GlobalerKatalogNichtErreichbar
+        expr: schule_ad_globaler_katalog_erreichbar == 0
+        for: 15m
+        labels: { severity: warning, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "Globaler Katalog auf {{ $labels.geraet }} antwortet nicht (Port 3268)"
+          description: "Anmeldungen und Suchen ueber Domaenengrenzen hinweg schlagen fehl."
+
+  - name: ad-konten
+    rules:
+
+      # Sicherheitsrelevant, deshalb kategorie security: geht an der
+      # normalen Buendelung vorbei.
+      - alert: VieleKontosperrungen
+        expr: schule_ad_kontosperrungen_1h > 10
+        for: 5m
+        labels: { severity: warning, kategorie: security, paar: kontosperrungen }
+        annotations:
+          summary: "{{ $value }} Kontosperrungen in der letzten Stunde"
+          description: >-
+            Entweder ein Kennwortangriff oder ein Geraet mit gespeichertem
+            altem Kennwort. Der Unterschied zeigt sich daran, ob es viele
+            verschiedene Konten sind oder immer dasselbe. Im Dashboard
+            "Sicherheit" bei Ereignis 4740 nachsehen.
+
+      - alert: SehrVieleKontosperrungen
+        expr: schule_ad_kontosperrungen_1h > 40
+        for: 2m
+        labels: { severity: critical, kategorie: security, paar: kontosperrungen }
+        annotations:
+          summary: "{{ $value }} Kontosperrungen in der letzten Stunde"
+          description: >-
+            In dieser Groessenordnung ist ein Kennwortangriff wahrscheinlich.
+            Quell-IP aus Ereignis 4740 heraussuchen und auf der FortiGate
+            sperren.
+
+  - name: ad-betrieb
+    rules:
+
+      - alert: AdPruefungLiefertNichts
+        expr: |
+          schule_ad_ist_domaenencontroller == 1
+          and (time() - schule_ad_pruefung_zeitstempel) > 3600
+        for: 30m
+        labels: { severity: warning, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "Keine AD-Pruefwerte mehr von {{ $labels.geraet }}"
+          description: >-
+            Die geplante Aufgabe SchulMonitoring-AdPruefung laeuft nicht
+            mehr. Auf dem DC pruefen mit:
+            Get-ScheduledTask SchulMonitoring-AdPruefung | Get-ScheduledTaskInfo
+
+      - alert: AdModulFehlt
+        expr: schule_ad_modul_vorhanden == 0 and schule_ad_ist_domaenencontroller == 1
+        for: 1h
+        labels: { severity: warning, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "PowerShell-Modul ActiveDirectory fehlt auf {{ $labels.geraet }}"
+          description: >-
+            Ohne das Modul entfallen Replikation, FSMO und gesperrte Konten.
+            Nachinstallieren mit:
+            Add-WindowsFeature RSAT-AD-PowerShell
+
+      - alert: AdPruefabschnittFehlgeschlagen
+        expr: schule_ad_pruefabschnitt_erfolgreich == 0
+        for: 1h
+        labels: { severity: info, kategorie: verzeichnisdienst }
+        annotations:
+          summary: "AD-Pruefabschnitt {{ $labels.abschnitt }} auf {{ $labels.geraet }} scheitert"
+          description: "Alle uebrigen Werte kommen weiterhin an."

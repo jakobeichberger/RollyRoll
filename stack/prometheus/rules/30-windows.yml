@@ -1,0 +1,166 @@
+---
+groups:
+
+  - name: windows-dienste
+    rules:
+
+      - alert: UeberwachterDienstGestoppt
+        expr: |
+          windows_service_state{state="running"} == 0
+          and on (geraet, name) windows_service_start_mode{start_mode="auto"} == 1
+        for: 10m
+        labels: { severity: critical, kategorie: dienste }
+        annotations:
+          summary: "Dienst {{ $labels.name }} auf {{ $labels.geraet }} laeuft nicht"
+          description: "Der Dienst ist auf automatischen Start gesetzt, laeuft aber nicht."
+
+      - alert: DomaenendienstGestoppt
+        expr: |
+          windows_service_state{state="running", name=~"NTDS|DNS|DHCPServer|Netlogon|kdc|W32Time"} == 0
+        for: 5m
+        labels: { severity: critical, kategorie: dienste }
+        annotations:
+          summary: "Domaenendienst {{ $labels.name }} auf {{ $labels.geraet }} gestoppt"
+          description: "Anmeldungen in der Schule koennen dadurch komplett ausfallen."
+
+      - alert: DruckerwarteschlangeHaengt
+        expr: windows_printer_job_status{status="error"} > 0
+        for: 20m
+        labels: { severity: info, kategorie: dienste }
+        annotations:
+          summary: "Druckauftraege mit Fehler auf {{ $labels.geraet }}"
+          description: "Drucker {{ $labels.printer }} – Warteschlange pruefen."
+
+  - name: windows-sicherheitshygiene
+    rules:
+
+      - alert: DefenderEchtzeitschutzAus
+        expr: schule_defender_echtzeitschutz == 0
+        for: 15m
+        labels: { severity: critical, kategorie: security }
+        annotations:
+          summary: "Defender-Echtzeitschutz auf {{ $labels.geraet }} deaktiviert"
+          description: "Entweder Fehlkonfiguration oder ein Angreifer hat den Schutz abgeschaltet."
+
+      - alert: DefenderSignaturenVeraltet
+        expr: schule_defender_signatur_alter_tage > 3
+        for: 2h
+        labels: { severity: warning, kategorie: security, vorwarnung: "ja" }
+        annotations:
+          summary: "Virensignaturen auf {{ $labels.geraet }} sind {{ $value | printf \"%.0f\" }} Tage alt"
+          description: "Update-Weg pruefen (Internet, WSUS, Proxy)."
+
+      - alert: DefenderKeinScan
+        expr: schule_defender_letzter_scan_tage > 14
+        for: 6h
+        labels: { severity: info, kategorie: security }
+        annotations:
+          summary: "Auf {{ $labels.geraet }} lief seit {{ $value | printf \"%.0f\" }} Tagen kein Virenscan"
+
+      - alert: FirewallProfilAus
+        expr: schule_firewall_aktiv == 0
+        for: 30m
+        labels: { severity: warning, kategorie: security }
+        annotations:
+          summary: "Windows-Firewall-Profil {{ $labels.profil }} auf {{ $labels.geraet }} ist aus"
+
+      - alert: BitlockerNichtAktiv
+        expr: schule_bitlocker_geschuetzt{rolle="server"} == 0
+        for: 12h
+        labels: { severity: warning, kategorie: security }
+        annotations:
+          summary: "Laufwerk {{ $labels.volume }} auf {{ $labels.geraet }} ist unverschluesselt"
+          description: "Relevant fuer den Datenschutz bei Diebstahl oder Entsorgung."
+
+      - alert: PatchstandVeraltet
+        expr: schule_patch_alter_tage > 45
+        for: 12h
+        labels: { severity: warning, kategorie: security, vorwarnung: "ja", paar: patchstand }
+        annotations:
+          summary: "{{ $labels.geraet }} hat seit {{ $value | printf \"%.0f\" }} Tagen keine Updates bekommen"
+          description: "Ungepatchte Systeme sind das haeufigste Einfallstor."
+
+      - alert: PatchstandKritisch
+        expr: schule_patch_alter_tage > 90
+        for: 12h
+        labels: { severity: critical, kategorie: security, paar: patchstand }
+        annotations:
+          summary: "{{ $labels.geraet }} seit {{ $value | printf \"%.0f\" }} Tagen ohne Updates"
+
+      - alert: NeustartAusstehend
+        expr: schule_neustart_ausstehend == 1
+        for: 7d
+        labels: { severity: info, kategorie: wartung }
+        annotations:
+          summary: "{{ $labels.geraet }} wartet seit einer Woche auf einen Neustart"
+          description: "Updates werden erst nach dem Neustart wirksam."
+
+      - alert: ZertifikatAufServerLaeuftAb
+        expr: schule_zertifikat_ablauf_tage < 21
+        for: 6h
+        labels: { severity: warning, kategorie: zertifikate, vorwarnung: "ja" }
+        annotations:
+          summary: "Zertifikat auf {{ $labels.geraet }} laeuft in {{ $value | printf \"%.0f\" }} Tagen ab"
+          description: "Betreff: {{ $labels.betreff }}"
+
+      - alert: ZeitAbweichung
+        expr: abs(windows_time_computed_time_offset_seconds) > 5
+        for: 30m
+        labels: { severity: warning, kategorie: zeit }
+        annotations:
+          summary: "Uhrzeit auf {{ $labels.geraet }} weicht um {{ $value | printf \"%.1f\" }} s ab"
+          description: >-
+            Zeitabweichungen brechen Kerberos-Anmeldungen und machen
+            Sicherheitsprotokolle unbrauchbar.
+
+  - name: windows-datensicherung-und-virtualisierung
+    rules:
+
+      - alert: DatensicherungFehlgeschlagen
+        expr: schule_sicherung_erfolgreich == 0
+        for: 2h
+        labels: { severity: critical, kategorie: sicherung }
+        annotations:
+          summary: "Letzte Datensicherung auf {{ $labels.geraet }} war nicht erfolgreich"
+          description: "Auftrag: {{ $labels.auftrag }}"
+
+      - alert: DatensicherungZuAlt
+        expr: schule_sicherung_alter_stunden > 36
+        for: 1h
+        labels: { severity: critical, kategorie: sicherung, vorwarnung: "ja" }
+        annotations:
+          summary: "Keine Sicherung von {{ $labels.geraet }} seit {{ $value | printf \"%.0f\" }} Stunden"
+          description: "Im Ernstfall fehlen die Daten. Sicherungsauftrag pruefen."
+
+      - alert: HyperVReplikationFehler
+        expr: schule_hyperv_replikation_zustand > 1
+        for: 30m
+        labels: { severity: critical, kategorie: virtualisierung }
+        annotations:
+          summary: "Hyper-V Replikation von {{ $labels.vm }} auf {{ $labels.geraet }} gestoert"
+
+      - alert: HyperVVmGestoppt
+        expr: schule_hyperv_vm_zustand{erwartet_laufend="1"} != 2
+        for: 10m
+        labels: { severity: critical, kategorie: virtualisierung }
+        annotations:
+          summary: "VM {{ $labels.vm }} auf {{ $labels.geraet }} laeuft nicht"
+          description: "Zustand: {{ $labels.zustand }}"
+
+      - alert: HyperVPruefpunkteAlt
+        expr: schule_hyperv_pruefpunkt_alter_tage > 7
+        for: 6h
+        labels: { severity: warning, kategorie: virtualisierung, vorwarnung: "ja" }
+        annotations:
+          summary: "Alter Pruefpunkt an VM {{ $labels.vm }} ({{ $value | printf \"%.0f\" }} Tage)"
+          description: >-
+            Alte Pruefpunkte lassen die Differenzdatentraeger unbegrenzt wachsen
+            und fuellen irgendwann den Host-Datentraeger.
+
+      - alert: HyperVHostSpeicherKnapp
+        expr: schule_hyperv_host_speicher_frei_prozent < 15
+        for: 30m
+        labels: { severity: critical, kategorie: virtualisierung, vorwarnung: "ja" }
+        annotations:
+          summary: "Hyper-V Host {{ $labels.geraet }} hat nur noch {{ $value | printf \"%.0f\" }} % RAM frei"
+          description: "Neue VMs starten nicht mehr, dynamischer Speicher wird gedrosselt."

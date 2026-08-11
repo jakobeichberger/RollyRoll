@@ -1,0 +1,35 @@
+# Geheimnisse und erzeugte Konfiguration – gehoeren nie ins Repository
+stack/.env
+stack/alertmanager/alertmanager.yml
+stack/snmp/snmp-schule.yml
+stack/fortigate/fortigate-key.yaml
+
+# Vom Registrierungs-Dienst erzeugte Ziellisten
+stack/prometheus/targets/*.json
+
+# Von der Geraeteerkennung erzeugte Fundliste (wird laufend neu geschrieben)
+stack/inventar/gefunden.yml
+
+# Heruntergeladene Agent-Pakete
+stack/dist/
+
+# Arbeitsdateien der Bereitstellung
+*.iso
+*.tar.gz
+*.vhdx
+*.teil
+*.tmp
+
+# Betriebssystem und Editoren
+Thumbs.db
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# Von pruefen.sh geladene Pruefwerkzeuge (promtool, amtool)
+.werkzeuge/

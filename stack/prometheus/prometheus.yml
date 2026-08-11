@@ -1,0 +1,180 @@
+---
+global:
+  scrape_interval: 30s
+  scrape_timeout: 15s
+  evaluation_interval: 30s
+  external_labels:
+    standort: schule
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+
+  # ------------------------------------------------------------------
+  # Monitoring-Server selbst
+  # ------------------------------------------------------------------
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels: { geraet: monitoring-server, typ: monitoring }
+
+  - job_name: monitoring-vm
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels: { geraet: monitoring-server, typ: linux, rolle: monitoring }
+
+  - job_name: container
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels: { geraet: monitoring-server, typ: monitoring }
+
+  - job_name: registrar
+    static_configs:
+      - targets: ["registrar:8000"]
+        labels: { geraet: monitoring-server, typ: monitoring }
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+        labels: { geraet: monitoring-server, typ: monitoring }
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+        labels: { geraet: monitoring-server, typ: monitoring }
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+        labels: { geraet: monitoring-server, typ: monitoring }
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]
+        labels: { geraet: monitoring-server, typ: monitoring }
+
+  # ------------------------------------------------------------------
+  # Windows-Server und -Clients
+  # Die Ziel-Datei wird vom Registrierungs-Dienst automatisch gepflegt,
+  # sobald sich ein Agent per GPO ausgerollt anmeldet.
+  # ------------------------------------------------------------------
+  - job_name: windows
+    scrape_interval: 30s
+    scrape_timeout: 20s
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/windows-*.json"]
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "([^:]+)(:[0-9]+)?"
+        target_label: adresse
+        replacement: "$1"
+    # Hinweis: Die Prozess-Metriken werden bereits auf dem Agenten begrenzt
+    # (--collector.process.include), damit die Kardinalitaet klein bleibt.
+
+  # ------------------------------------------------------------------
+  # Linux-Server (node_exporter, per install-agent.sh ausgerollt)
+  # ------------------------------------------------------------------
+  - job_name: linux
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/linux-*.json"]
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "([^:]+)(:[0-9]+)?"
+        target_label: adresse
+        replacement: "$1"
+
+  # ------------------------------------------------------------------
+  # Erreichbarkeit (ICMP) – alle Agenten und alles aus inventar.yml
+  # ------------------------------------------------------------------
+  - job_name: erreichbarkeit-icmp
+    scrape_interval: 30s
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/icmp-*.json"]
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: geraet_adresse
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  # ------------------------------------------------------------------
+  # Erreichbarkeit von Diensten (TCP-Port / HTTP)
+  # ------------------------------------------------------------------
+  - job_name: erreichbarkeit-dienste
+    scrape_interval: 60s
+    metrics_path: /probe
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/dienst-*.json"]
+        refresh_interval: 60s
+    relabel_configs:
+      - source_labels: [modul]
+        target_label: __param_module
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: ziel
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  # ------------------------------------------------------------------
+  # SNMP – UniFi Switches/APs, FortiGate Hardware-Sensoren, USV, Drucker
+  # ------------------------------------------------------------------
+  - job_name: snmp
+    scrape_interval: 60s
+    scrape_timeout: 45s
+    metrics_path: /snmp
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/snmp-*.json"]
+        refresh_interval: 60s
+    relabel_configs:
+      - source_labels: [modul]
+        target_label: __param_module
+      - source_labels: [auth]
+        target_label: __param_auth
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: geraet_adresse
+      - target_label: __address__
+        replacement: snmp:9116
+
+  # ------------------------------------------------------------------
+  # UniFi Controller (unpoller) – APs, Switches, Gateway, Clients
+  # ------------------------------------------------------------------
+  - job_name: unifi
+    scrape_interval: 60s
+    scrape_timeout: 45s
+    static_configs:
+      - targets: ["unpoller:9130"]
+        labels: { typ: unifi }
+
+  # ------------------------------------------------------------------
+  # FortiGate ueber REST-API
+  # ------------------------------------------------------------------
+  - job_name: fortigate
+    scrape_interval: 60s
+    scrape_timeout: 45s
+    metrics_path: /probe
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/fortigate-*.json"]
+        refresh_interval: 60s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: geraet_adresse
+      - target_label: __address__
+        replacement: fortigate-exporter:9710

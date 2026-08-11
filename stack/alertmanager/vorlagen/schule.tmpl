@@ -1,0 +1,57 @@
+{{ define "betreff" -}}
+{{ if eq .Status "firing" }}{{ if eq (index .Alerts 0).Labels.severity "critical" }}[KRITISCH]{{ else if eq (index .Alerts 0).Labels.severity "warning" }}[Warnung]{{ else }}[Hinweis]{{ end }}{{ else }}[Behoben]{{ end }} {{ .CommonLabels.alertname }}{{ if .CommonLabels.geraet }} – {{ .CommonLabels.geraet }}{{ end }} ({{ .Alerts | len }})
+{{- end }}
+
+{{ define "email.schule.html" -}}
+<!doctype html>
+<html lang="de">
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2430;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 12px;">
+<tr><td align="center">
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08);">
+
+  <tr>
+    <td style="padding:20px 24px;background:{{ if eq .Status "firing" }}{{ if eq (index .Alerts 0).Labels.severity "critical" }}#b3261e{{ else if eq (index .Alerts 0).Labels.severity "warning" }}#b26a00{{ else }}#37618e{{ end }}{{ else }}#1e7b46{{ end }};color:#ffffff;">
+      <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.85;">Schul-Monitoring</div>
+      <div style="font-size:21px;font-weight:600;margin-top:4px;">
+        {{ if eq .Status "firing" }}{{ .Alerts | len }} offene Meldung{{ if ne (.Alerts | len) 1 }}en{{ end }}{{ else }}Entwarnung{{ end }}
+      </div>
+    </td>
+  </tr>
+
+  {{ range .Alerts }}
+  <tr>
+    <td style="padding:18px 24px;border-bottom:1px solid #e8eaed;">
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px;">{{ .Annotations.summary }}</div>
+      {{ if .Annotations.description }}
+      <div style="font-size:14px;line-height:1.55;color:#444c5c;margin-bottom:12px;">{{ .Annotations.description }}</div>
+      {{ end }}
+      <table role="presentation" cellpadding="0" cellspacing="0" style="font-size:13px;color:#5a6272;">
+        {{ if .Labels.geraet }}<tr><td style="padding:2px 14px 2px 0;color:#8a92a3;">Geraet</td><td style="font-weight:600;color:#1f2430;">{{ .Labels.geraet }}</td></tr>{{ end }}
+        {{ if .Labels.raum }}<tr><td style="padding:2px 14px 2px 0;color:#8a92a3;">Raum</td><td>{{ .Labels.raum }}</td></tr>{{ end }}
+        {{ if .Labels.kategorie }}<tr><td style="padding:2px 14px 2px 0;color:#8a92a3;">Kategorie</td><td>{{ .Labels.kategorie }}</td></tr>{{ end }}
+        {{ if eq .Labels.vorwarnung "ja" }}<tr><td style="padding:2px 14px 2px 0;color:#8a92a3;">Art</td><td style="color:#b26a00;font-weight:600;">Vorwarnung – noch ist nichts ausgefallen</td></tr>{{ end }}
+        <tr><td style="padding:2px 14px 2px 0;color:#8a92a3;">Seit</td><td>{{ .StartsAt.Format "02.01.2006 15:04" }}</td></tr>
+      </table>
+      {{ if .GeneratorURL }}
+      <div style="margin-top:12px;">
+        <a href="{{ .GeneratorURL }}" style="font-size:13px;color:#37618e;text-decoration:none;">Messwerte ansehen &rarr;</a>
+      </div>
+      {{ end }}
+    </td>
+  </tr>
+  {{ end }}
+
+  <tr>
+    <td style="padding:16px 24px;font-size:12px;color:#8a92a3;background:#fafbfc;">
+      Automatisch erzeugt vom Schul-Monitoring.
+      {{ if .CommonAnnotations.dashboard }}<a href="{{ .CommonAnnotations.dashboard }}" style="color:#37618e;">Dashboard oeffnen</a>{{ end }}
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+{{- end }}
