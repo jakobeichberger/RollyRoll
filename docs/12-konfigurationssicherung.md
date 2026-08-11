@@ -98,7 +98,7 @@ Beispielausgabe nach einer neu angelegten Firewall-Regel:
 | `NetzkonfigurationGeaendert` | info | irgendetwas hat sich geändert |
 | `NetzkonfigurationNachtsGeaendert` | warning | Änderung zwischen 21 und 5 Uhr |
 | `KonfigurationssicherungFehlgeschlagen` | warning | Abruf schlägt fehl |
-| `KeineKonfigurationssicherungMehr` | warning | seit über zwei Tagen kein Lauf |
+| `KeineKonfigurationssicherungMehr` | warning | seit über sechs Stunden kein Lauf |
 
 Die erste ist bewusst nur `info` und wird gesammelt zugestellt: Wer tagsüber an
 der Firewall arbeitet, soll keine Warnung bekommen. **Dieselbe Änderung
