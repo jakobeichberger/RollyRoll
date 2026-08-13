@@ -238,6 +238,7 @@ Normalbetrieb?
 | [11-verzeichnisdienst.md](docs/11-verzeichnisdienst.md) | Active Directory im Betrieb: Replikation, SYSVOL, FSMO |
 | [12-konfigurationssicherung.md](docs/12-konfigurationssicherung.md) | Nächtliche Sicherung von FortiGate und UniFi |
 | [13-pruefen.md](docs/13-pruefen.md) | Alles durchtesten mit `./pruefen.sh` |
+| [AUFGABE.md](AUFGABE.md) | Auftragstext, wenn ein KI-Assistent an diesem Projekt arbeiten soll |
 | [08-fehlersuche.md](docs/08-fehlersuche.md) | Wenn etwas nicht läuft |
 
 ---
